@@ -1,8 +1,8 @@
 # Use a base image with Python
 FROM python:3.8-slim-buster
 
-# Install git
-RUN apt-get update && apt-get install -y git
+# Install git and aria2
+RUN apt-get update && apt-get install -y git aria2
 
 # Set the working directory to /app
 WORKDIR /app
@@ -18,6 +18,3 @@ COPY . .
 
 # Start aria2c and the bot
 CMD aria2c --enable-rpc --rpc-listen-all=true --rpc-allow-origin-all & python3 main.py
-
-
-
