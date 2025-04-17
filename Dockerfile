@@ -16,5 +16,8 @@ RUN pip3 install -r requirements.txt
 # Copy the rest of the application code
 COPY . .
 
-# Set the default command
-CMD ["python3", "main.py"]
+# Start aria2c and the bot
+CMD aria2c --enable-rpc --rpc-listen-all=true --rpc-allow-origin-all & python3 main.py
+
+
+
