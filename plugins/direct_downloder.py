@@ -12,14 +12,14 @@ aria2 = API(
     Aria2Client(
         host=ARIA2_HOST,
         port=ARIA2_PORT,
-        secret=ARIA2_SECRET  # Blank if no secret is set
+        secret=ARIA2_SECRET  # Leave blank if no secret is set
     )
 )
 
 # Global variable to track cancellation
 CANCEL_DOWNLOAD = {}
 
-# Reusable progress bar function
+# Reusable progress bar function with content change check
 async def update_progress_bar(status_message, completed, total, speed=None, eta=None):
     progress = int((completed / total) * 10) if total != 0 else 0
     progress_bar = f"[{'■' * progress}{'□' * (10 - progress)}]"
@@ -29,9 +29,12 @@ async def update_progress_bar(status_message, completed, total, speed=None, eta=
         f"Progress: {progress_bar} {round(completed / 1024 / 1024, 1)} Mʙ | {round(total / 1024 / 1024, 1)} Mʙ\n"
         f"{speed_text}{eta_text}"
     )
-    await status_message.edit(progress_text, reply_markup=InlineKeyboardMarkup([
-        [InlineKeyboardButton("❌ Cancel", callback_data="cancel")]]
-    ))
+    
+    # Check if the new content is different before editing
+    if status_message.text != progress_text:
+        await status_message.edit(progress_text, reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("❌ Cancel", callback_data="cancel")]]
+        ))
 
 @Bot.on_message(filters.command("ddl") & filters.private)
 async def direct_downloader(client: Client, message: Message):
