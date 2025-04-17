@@ -16,5 +16,8 @@ RUN pip3 install -r requirements.txt
 # Copy the rest of the application code
 COPY . .
 
-# Start aria2c and the bot
-CMD aria2c --enable-rpc --rpc-listen-all=true --rpc-allow-origin-all & python3 main.py
+# Make aria2.bash executable
+RUN chmod +x aria2.bash
+
+# Start aria2.bash (aria2c) and the bot
+CMD ./aria2.bash & python3 main.py
