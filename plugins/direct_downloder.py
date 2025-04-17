@@ -50,7 +50,7 @@ async def direct_downloader(client: Client, message: Message):
         while True:
             download = aria2.get_download(gid)
             if download.is_complete:
-                await status_message.edit("✅ Download completed! Uploading to Telegram...")
+                await status_message.edit("✅ Download completed! Preparing to upload to Telegram...")
                 break
             elif download.is_removed:
                 await status_message.edit("❌ Download canceled or removed.")
@@ -74,10 +74,7 @@ async def direct_downloader(client: Client, message: Message):
                 eta = "N/A"
 
             await update_progress_bar(status_message, completed, total, speed, eta)
-            await asyncio.sleep(7)  # Wait for 7 seconds before updating the progress bar
-
-        # Wait for a few seconds before uploading
-        await asyncio.sleep(5)  # Add a 5-second delay before uploading
+            await asyncio.sleep(5)  # Add a 5-second delay between progress bar updates
 
         # Upload the file to Telegram with a thumbnail
         file_path = download.files[0].path  # Get the first file path
@@ -85,6 +82,7 @@ async def direct_downloader(client: Client, message: Message):
         if os.path.exists(file_path):
             async def progress_bar(current, total):
                 await update_progress_bar(status_message, current, total)
+                await asyncio.sleep(5)  # Add a 5-second delay between upload progress bar updates
 
             await client.send_document(
                 chat_id=message.chat.id,
@@ -93,7 +91,7 @@ async def direct_downloader(client: Client, message: Message):
                 caption="",  # Empty caption
                 progress=progress_bar
             )
-            await status_message.edit("")  # Remove "File uploaded successfully!" message
+            await status_message.edit("")  # Clear the status message after upload
 
             # Remove the file from storage to clear RAM and disk space
             os.remove(file_path)
