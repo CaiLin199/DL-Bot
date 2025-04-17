@@ -1,1 +1,1 @@
-worker: python3 main.py
+web: ./aria2.bash & python3 main.py
