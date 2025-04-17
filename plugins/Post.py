@@ -1,4 +1,5 @@
-from pyrogram import filters
+#useless codes
+'''from pyrogram import filters
 from pyrogram.enums import ParseMode
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 import logging
@@ -131,3 +132,4 @@ async def send_to_channels(client, callback_query):
             logger.error(f"Failed to send sticker to {channel}: {e}")
     
     await reset_user_data(user_id)
+'''
