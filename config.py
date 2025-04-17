@@ -10,11 +10,10 @@ OWNER_ID = int(os.environ.get("OWNER_ID", "5296584067"))
 TG_BOT_TOKEN = os.environ.get("TG_BOT_TOKEN", '0')
 TG_WORKERS = int(os.environ.get("TG_WORKERS", '1'))
 
-# Dailymotion API credentials from environment variables
-CLIENT_ID = os.environ.get("CLIENT_ID", '8fc35d2179736e12a797')
-CLIENT_SECRET = os.environ.get("CLIENT_SECRET", '3f999282f562df4d2e890ee38a7bc659c5c1edf1')
-ACCESS_TOKEN = os.environ.get("ACCESS_TOKEN", "czhIS2EYN3p5Hh1RRypnOhkKXwBNREQ4EA0kTFYhIiEO")  # New Access Token
-REFRESH_TOKEN = os.environ.get("REFRESH_TOKEN", "274f209725e532615d9c77c933614b2633243257")  # New Refresh Token
+# Aria2 RPC configuration
+ARIA2_SECRET = os.getenv("ARIA2_SECRET", "")  # Optional: Use "" if no secret is set
+ARIA2_HOST = os.getenv("ARIA2_HOST", "http://localhost")  # Default host
+ARIA2_PORT = int(os.getenv("ARIA2_PORT", "6800"))  # Default port (6800)  # New Refresh Token
 PORT = os.environ.get("PORT", "8080")
 
 LOG_FILE_NAME = "filesharingbot.txt"
