@@ -4,5 +4,5 @@
 aria2c --enable-rpc \
        --rpc-listen-all=true \
        --rpc-allow-origin-all \
-       --no-cache \
+       --http-no-cache \
        --allow-overwrite
