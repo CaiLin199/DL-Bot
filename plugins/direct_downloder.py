@@ -29,7 +29,7 @@ async def update_progress_bar(status_message, completed, total, speed=None, eta=
     )
     await status_message.edit(progress_text)
 
-@Bot.on_message(filters.command("ddl") & filters.private & filters.OWNER_ID)
+@Bot.on_message(filters.command("ddl") & filters.private & filters.user(OWNER_ID))
 async def direct_downloader(client: Client, message: Message):
     
     if len(message.command) < 2:        
