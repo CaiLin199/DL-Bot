@@ -13,8 +13,7 @@ TG_WORKERS = int(os.environ.get("TG_WORKERS", '1'))
 # Aria2 RPC configuration
 ARIA2_SECRET = os.environ.get("ARIA2_SECRET", "")  # Optional: Use "" if no secret is set
 ARIA2_HOST = os.environ.get("ARIA2_HOST", "http://localhost")  # Default host
-ARIA2_PORT = int(os.envrion
-get("ARIA2_PORT", "6800"))  # Default port (6800)  # New Refresh Token
+ARIA2_PORT = int(os.environ.get("ARIA2_PORT", "6800"))  # Default port (6800)  # New Refresh Token
 PORT = os.environ.get("PORT", "8080")
 
 LOG_FILE_NAME = "filesharingbot.txt"
