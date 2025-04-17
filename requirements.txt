@@ -3,7 +3,7 @@ requests
 aiohttp
 git+https://github.com/AbidAbdullah1425/pyrogram.git@dev#egg=pyrogram
 TgCrypto
-youtube_dl
+aria2p
 
 
 
