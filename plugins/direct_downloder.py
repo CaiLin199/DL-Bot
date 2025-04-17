@@ -17,15 +17,14 @@ aria2 = API(
 )
 
 # Reusable progress bar function
-async def update_progress_bar(status_message, completed, total, speed=None, eta=None, elapsed=None):
+async def update_progress_bar(status_message, completed, total, speed=None, eta=None):
     progress = int((completed / total) * 10) if total != 0 else 0
     progress_bar = f"[{'■' * progress}{'□' * (10 - progress)}]"
     speed_text = f"⚡️ Speed: {round(speed / 1024 / 1024, 2)} Mʙ/s\n" if speed else ""
     eta_text = f"⌛ ETA: {eta}\n" if eta else ""
-    elapsed_text = f"⏱️ Time elapsed: {elapsed}\n" if elapsed else ""
     progress_text = (
         f"Progress: {progress_bar} {round(completed / 1024 / 1024, 1)} Mʙ | {round(total / 1024 / 1024, 1)} Mʙ\n"
-        f"{speed_text}{eta_text}{elapsed_text}"
+        f"{speed_text}{eta_text}"
     )
     await status_message.edit(progress_text)
 
@@ -74,9 +73,7 @@ async def direct_downloader(client: Client, message: Message):
             else:
                 eta = "N/A"
 
-            elapsed = f"{round(download.elapsed_time / 60, 0)}m {round(download.elapsed_time % 60, 0)}s"
-
-            await update_progress_bar(status_message, completed, total, speed, eta, elapsed)
+            await update_progress_bar(status_message, completed, total, speed, eta)
             await asyncio.sleep(7)  # Wait for 7 seconds before updating the progress bar
 
         # Upload the file to Telegram with the same progress bar
