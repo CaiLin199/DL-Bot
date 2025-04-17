@@ -62,7 +62,7 @@ async def direct_downloader(client: Client, message: Message):
             completed = download.completed_length
             total = download.total_length
             speed = download.download_speed
-            eta = download.eta_formatted()  # Returns ETA as a string
+            eta = str(timedelta(seconds=download.eta)) if download.eta else "N/A"
             elapsed = f"{round(download.elapsed_time / 60, 0)}m {round(download.elapsed_time % 60, 0)}s"
 
             await update_progress_bar(status_message, completed, total, speed, eta, elapsed)
