@@ -7,7 +7,7 @@ from logging.handlers import RotatingFileHandler
 API_ID = int(os.environ.get("API_ID", "26254064"))
 API_HASH = os.environ.get("API_HASH", "72541d6610ae7730e6135af9423b319c")
 OWNER_ID = int(os.environ.get("OWNER_ID", "5296584067"))
-TG_BOT_TOKEN = os.environ.get("TG_BOT_TOKEN", '0')
+TG_BOT_TOKEN = os.environ.get("TG_BOT_TOKEN", '7418111014:AAHZHzq7AQa76tZx3coo5S2VIpaN8m_Gxa0')
 TG_WORKERS = int(os.environ.get("TG_WORKERS", '1'))
 
 # Aria2 RPC configuration
