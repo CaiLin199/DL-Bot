@@ -1,6 +1,5 @@
 import os
 import asyncio
-import time
 from datetime import timedelta
 from pyrogram import Client, filters
 from pyrogram.types import Message
@@ -29,10 +28,14 @@ async def update_progress_bar(status_message, completed, total, speed=None, eta=
     )
     await status_message.edit(progress_text)
 
-@Bot.on_message(filters.command("ddl") & filters.private & filters.user(OWNER_ID))
+@Bot.on_message(filters.command("ddl") & filters.private)
 async def direct_downloader(client: Client, message: Message):
-    
-    if len(message.command) < 2:        
+    if message.from_user.id != OWNER_ID:
+        await message.reply("You are not authorized to use this command.")
+        return
+
+    if len(message.command) < 2:
+        await message.reply("Usage: /ddl <direct_link>")
         return
 
     direct_link = message.command[1]
@@ -71,7 +74,7 @@ async def direct_downloader(client: Client, message: Message):
                 eta = "N/A"
 
             await update_progress_bar(status_message, completed, total, speed, eta)
-            await asyncio.sleep(5)  # Wait for 7 seconds before updating the progress bar
+            await asyncio.sleep(7)  # Wait for 7 seconds before updating the progress bar
 
         # Wait for a few seconds before uploading
         await asyncio.sleep(5)  # Add a 5-second delay before uploading
@@ -91,6 +94,10 @@ async def direct_downloader(client: Client, message: Message):
                 progress=progress_bar
             )
             await status_message.edit("")  # Remove "File uploaded successfully!" message
+
+            # Remove the file from storage to clear RAM and disk space
+            os.remove(file_path)
+            await status_message.edit("✅ File uploaded and removed from storage to free up space.")
         else:
             await status_message.edit("❌ File not found after download.")
 
