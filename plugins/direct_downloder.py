@@ -1,5 +1,6 @@
 import os
 import asyncio
+import time
 from datetime import timedelta
 from pyrogram import Client, filters
 from pyrogram.types import Message
@@ -28,14 +29,10 @@ async def update_progress_bar(status_message, completed, total, speed=None, eta=
     )
     await status_message.edit(progress_text)
 
-@Bot.on_message(filters.command("ddl") & filters.private)
+@Bot.on_message(filters.command("ddl") & filters.private & filters.OWNER_ID)
 async def direct_downloader(client: Client, message: Message):
-    if message.from_user.id != OWNER_ID:
-        await message.reply("You are not authorized to use this command.")
-        return
-
-    if len(message.command) < 2:
-        await message.reply("Usage: /ddl <direct_link>")
+    
+    if len(message.command) < 2:        
         return
 
     direct_link = message.command[1]
@@ -74,10 +71,14 @@ async def direct_downloader(client: Client, message: Message):
                 eta = "N/A"
 
             await update_progress_bar(status_message, completed, total, speed, eta)
-            await asyncio.sleep(7)  # Wait for 7 seconds before updating the progress bar
+            await asyncio.sleep(5)  # Wait for 7 seconds before updating the progress bar
 
-        # Upload the file to Telegram with the same progress bar
+        # Wait for a few seconds before uploading
+        await asyncio.sleep(5)  # Add a 5-second delay before uploading
+
+        # Upload the file to Telegram with a thumbnail
         file_path = download.files[0].path  # Get the first file path
+        thumbnail_path = "assist/thumbnail.jpg"  # Path to the thumbnail
         if os.path.exists(file_path):
             async def progress_bar(current, total):
                 await update_progress_bar(status_message, current, total)
@@ -85,10 +86,11 @@ async def direct_downloader(client: Client, message: Message):
             await client.send_document(
                 chat_id=message.chat.id,
                 document=file_path,
-                caption="📤 File uploaded successfully!",
+                thumb=thumbnail_path if os.path.exists(thumbnail_path) else None,  # Use thumbnail if available
+                caption="",  # Empty caption
                 progress=progress_bar
             )
-            await status_message.edit("✅ File uploaded successfully!")
+            await status_message.edit("")  # Remove "File uploaded successfully!" message
         else:
             await status_message.edit("❌ File not found after download.")
 
