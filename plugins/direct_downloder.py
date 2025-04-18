@@ -89,6 +89,7 @@ async def direct_downloader(client: Client, message: Message):
                 eta = "N/A"
 
             await update_progress_bar(status_message, completed, total, speed, eta)
+            await asyncio.sleep(5)  # Add a 5-second delay between progress bar updates
 
         # Upload the file to Telegram with a thumbnail
         file_path = download.files[0].path
@@ -104,9 +105,11 @@ async def direct_downloader(client: Client, message: Message):
                 upload_text = (
                     f"Uploading: {progress_bar} {round(current / 1024 / 1024, 1)} Mʙ | {round(total / 1024 / 1024, 1)} Mʙ"
                 )
-                await status_message.edit(upload_text, reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("❌ Cancel", callback_data="cancel")]]
-                ))
+                if status_message.text != upload_text:
+                    await status_message.edit(upload_text, reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("❌ Cancel", callback_data="cancel")]]
+                    ))
+                await asyncio.sleep(5)  # Add a 5-second delay between progress bar updates
                 return True
 
             await client.send_document(
