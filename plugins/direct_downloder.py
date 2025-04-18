@@ -43,25 +43,25 @@ async def direct_downloader(client: Client, message: Message):
             if CANCEL_DOWNLOAD.get(message.chat.id):
                 aria2.remove([gid])
                 await status_message.edit("❌ Download canceled by user.")
-                return
+                return None
 
             try:
                 download = aria2.get_download(gid)
             except Exception as e:
                 print(f"Error getting download: {str(e)}")
                 await status_message.edit("❌ Download failed to start.")
-                return
+                return None
 
             if download.is_complete:
                 await status_message.edit("✅ Download completed! Preparing to upload...")
                 break
             elif download.is_removed:
                 await status_message.edit("❌ Download canceled or removed.")
-                return
+                return None
             elif download.has_failed:
                 error_msg = f"❌ Download failed.\nError: {download.error_message}"
                 await status_message.edit(error_msg[:4096])
-                return
+                return None
 
             current_time = time.time()
             if current_time - last_download_update >= PROGRESS_UPDATE_DELAY:
@@ -84,8 +84,8 @@ async def direct_downloader(client: Client, message: Message):
 
             time.sleep(0.1)
 
-        # Handle file upload
-        await handle_upload(
+        # Handle file upload and return the uploaded message
+        uploaded_message = await handle_upload(
             client=client,
             message=message,
             status_message=status_message,
@@ -93,9 +93,12 @@ async def direct_downloader(client: Client, message: Message):
             chat_id=message.chat.id,
             CANCEL_DOWNLOAD=CANCEL_DOWNLOAD
         )
+        
+        return uploaded_message  # Return the uploaded message
 
     except Exception as e:
         await message.reply(f"❌ Failed to process: {str(e)}")
+        return None
 
 @Bot.on_callback_query(filters.regex("cancel"))
 async def cancel_dl(_, query):
