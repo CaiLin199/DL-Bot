@@ -17,6 +17,7 @@ aria2 = API(
 )
 
 CANCEL_DOWNLOAD = {}
+PROGRESS_UPDATE_DELAY = 5  # Update progress every 5 seconds
 
 def create_progress_bar(current, total):
     try:
@@ -30,9 +31,12 @@ def create_progress_bar(current, total):
         blocks = min(10, max(0, int(percentage / 10)))
         progress_bar = f"[{'■' * blocks}{'□' * (10 - blocks)}]"
         
-        return progress_bar, current_mb, total_mb
+        # Calculate speed (bytes per second)
+        speed_mb = round((current / time.time()) / 1048576, 1) if time.time() > 0 else 0
+        
+        return progress_bar, current_mb, total_mb, speed_mb
     except:
-        return "[□□□□□□□□□□]", 0, 0
+        return "[□□□□□□□□□□]", 0, 0, 0
 
 @Bot.on_message(filters.command("ddl") & filters.private & filters.user(OWNER_ID))
 async def direct_downloader(client: Client, message: Message):
@@ -43,12 +47,18 @@ async def direct_downloader(client: Client, message: Message):
     direct_link = message.command[1]
     CANCEL_DOWNLOAD[message.chat.id] = False
     last_download_update = 0
-    last_upload_update = 0
 
     try:
         # Start the download
-        download = aria2.add_uris([direct_link])
+        download = aria2.add_uris([direct_link], {
+            'continue': 'true',
+            'max-connection-per-server': '16',
+            'split': '16',
+            'min-split-size': '1M'
+        })
         gid = download.gid
+        start_time = time.time()
+        
         status_message = await message.reply(
             "📥 Download started...\n",
             reply_markup=InlineKeyboardMarkup([
@@ -63,7 +73,13 @@ async def direct_downloader(client: Client, message: Message):
                 await status_message.edit("❌ Download canceled by user.")
                 return
 
-            download = aria2.get_download(gid)
+            try:
+                download = aria2.get_download(gid)
+            except Exception as e:
+                print(f"Error getting download: {str(e)}")
+                await status_message.edit("❌ Download failed to start.")
+                return
+
             if download.is_complete:
                 await status_message.edit("✅ Download completed! Preparing to upload...")
                 break
@@ -71,18 +87,28 @@ async def direct_downloader(client: Client, message: Message):
                 await status_message.edit("❌ Download canceled or removed.")
                 return
             elif download.has_failed:
-                await status_message.edit("❌ Download failed.")
+                error_msg = f"❌ Download failed.\nError: {download.error_message}"
+                await status_message.edit(error_msg[:4096])  # Telegram message limit
                 return
 
             current_time = time.time()
-            if current_time - last_download_update >= 5:
+            if current_time - last_download_update >= PROGRESS_UPDATE_DELAY:
                 try:
                     completed = max(0, download.completed_length)
                     total = max(1, download.total_length)
-                    progress_bar, current_mb, total_mb = create_progress_bar(completed, total)
+                    progress_bar, current_mb, total_mb, speed_mb = create_progress_bar(completed, total)
                     
+                    # Calculate estimated time remaining
+                    if speed_mb > 0:
+                        remaining_mb = total_mb - current_mb
+                        eta_seconds = remaining_mb / speed_mb
+                        eta = str(timedelta(seconds=int(eta_seconds)))
+                    else:
+                        eta = "N/A"
+
                     await status_message.edit(
-                        f"Downloading: {progress_bar} {current_mb} Mʙ | {total_mb} Mʙ",
+                        f"Downloading:\n{progress_bar} {current_mb}/{total_mb} MB\n"
+                        f"Speed: {speed_mb} MB/s | ETA: {eta}",
                         reply_markup=InlineKeyboardMarkup([
                             [InlineKeyboardButton("❌ Cancel", callback_data="cancel")]
                         ])
@@ -91,24 +117,64 @@ async def direct_downloader(client: Client, message: Message):
                 except Exception as e:
                     print(f"Download progress error: {str(e)}")
 
-            time.sleep(5)  # Simple sleep instead of asyncio.sleep
+            # Quick status check interval
+            time.sleep(0.1)
 
         # Handle file upload
         file_path = download.files[0].path
         thumbnail_path = "assist/thumbnail.jpg"
         
         if os.path.exists(file_path):
-            # Start the upload
+            last_upload_update = 0
+            upload_start_time = time.time()
+            
             try:
+                # Separate upload progress handler
+                async def upload_progress(current, total):
+                    nonlocal last_upload_update
+                    now = time.time()
+                    
+                    if now - last_upload_update < PROGRESS_UPDATE_DELAY:
+                        return
+                    
+                    if CANCEL_DOWNLOAD.get(message.chat.id):
+                        return False
+
+                    try:
+                        progress_bar, current_mb, total_mb, speed_mb = create_progress_bar(current, total)
+                        elapsed_time = now - upload_start_time
+                        if elapsed_time > 0:
+                            speed_mb = round((current / elapsed_time) / 1048576, 1)
+                        
+                        # Calculate ETA
+                        if speed_mb > 0:
+                            remaining_mb = (total - current) / 1048576
+                            eta_seconds = remaining_mb / speed_mb
+                            eta = str(timedelta(seconds=int(eta_seconds)))
+                        else:
+                            eta = "N/A"
+
+                        await status_message.edit(
+                            f"Uploading:\n{progress_bar} {current_mb}/{total_mb} MB\n"
+                            f"Speed: {speed_mb} MB/s | ETA: {eta}",
+                            reply_markup=InlineKeyboardMarkup([
+                                [InlineKeyboardButton("❌ Cancel", callback_data="cancel")]
+                            ])
+                        )
+                        last_upload_update = now
+                    except Exception as e:
+                        print(f"Upload progress error: {str(e)}")
+                    return True
+
+                # Start upload
                 await client.send_document(
                     chat_id=message.chat.id,
                     document=file_path,
                     thumb=thumbnail_path if os.path.exists(thumbnail_path) else None,
                     caption="",
-                    progress=lambda current, total: update_upload_progress(
-                        current, total, status_message, message.chat.id
-                    )
+                    progress=upload_progress
                 )
+                
                 os.remove(file_path)
                 await status_message.edit("✅ File uploaded and removed from storage.")
             except Exception as e:
@@ -118,31 +184,6 @@ async def direct_downloader(client: Client, message: Message):
 
     except Exception as e:
         await message.reply(f"❌ Failed to process: {str(e)}")
-
-# Separate function for upload progress
-async def update_upload_progress(current, total, message, chat_id):
-    if not hasattr(update_upload_progress, "last_update"):
-        update_upload_progress.last_update = 0
-
-    try:
-        now = time.time()
-        if now - update_upload_progress.last_update < 5:
-            return
-            
-        if CANCEL_DOWNLOAD.get(chat_id):
-            return False
-
-        progress_bar, current_mb, total_mb = create_progress_bar(current, total)
-        await message.edit(
-            f"Uploading: {progress_bar} {current_mb} Mʙ | {total_mb} Mʙ",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("❌ Cancel", callback_data="cancel")]
-            ])
-        )
-        update_upload_progress.last_update = now
-    except Exception as e:
-        print(f"Upload progress error: {str(e)}")
-    return True
 
 @Bot.on_callback_query(filters.regex("cancel"))
 async def cancel_dl(_, query):
