@@ -1,5 +1,5 @@
 import os
-import asyncio
+import time
 from datetime import timedelta
 from pyrogram import Client, filters
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
@@ -19,22 +19,25 @@ aria2 = API(
 # Global variable to track cancellation
 CANCEL_DOWNLOAD = {}
 
-# Reusable progress bar function with content change check
-async def update_progress_bar(status_message, completed, total, speed=None, eta=None):
-    progress = int((completed / total) * 10) if total != 0 else 0
-    progress_bar = f"[{'■' * progress}{'□' * (10 - progress)}]"
-    speed_text = f"⚡️ Speed: {round(speed / 1024 / 1024, 2)} Mʙ/s\n" if speed else ""
-    eta_text = f"⌛ ETA: {eta}\n" if eta else ""
-    progress_text = (
-        f"Progress: {progress_bar} {round(completed / 1024 / 1024, 1)} Mʙ | {round(total / 1024 / 1024, 1)} Mʙ\n"
-        f"{speed_text}{eta_text}"
-    )
-    
-    # Check if the new content is different before editing
-    if status_message.text != progress_text:
+# Reusable progress bar function with a 5-second delay
+async def progress_bar(current, total, status_message, last_update):
+    if CANCEL_DOWNLOAD.get(status_message.chat.id):  # Check if cancellation was requested
+        await status_message.edit("❌ Upload canceled by user.")
+        return False  # Stop the upload
+
+    # Calculate progress in MB
+    progress = round(current / 1024 / 1024, 1)
+    total_mb = round(total / 1024 / 1024, 1)
+    progress_text = f"Uploading: {progress}/{total_mb} MB"
+
+    # Update every 5 seconds only
+    current_time = time.time()
+    if current_time - last_update[0] >= 5:  # Check if 5 seconds have passed since the last update
         await status_message.edit(progress_text, reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("❌ Cancel", callback_data="cancel")]]
         ))
+        last_update[0] = current_time  # Update the last update time
+    return True
 
 @Bot.on_message(filters.command("ddl") & filters.private)
 async def direct_downloader(client: Client, message: Message):
@@ -88,36 +91,26 @@ async def direct_downloader(client: Client, message: Message):
             else:
                 eta = "N/A"
 
-            await update_progress_bar(status_message, completed, total, speed, eta)
-            await asyncio.sleep(5)  # Add a 5-second delay between progress bar updates
+            # Update every 5 seconds
+            progress = round(completed / 1024 / 1024, 1)
+            total_mb = round(total / 1024 / 1024, 1)
+            progress_text = f"Downloading: {progress}/{total_mb} MB"
+            await status_message.edit(progress_text, reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("❌ Cancel", callback_data="cancel")]]
+            ))
+            await asyncio.sleep(5)
 
         # Upload the file to Telegram with a thumbnail
         file_path = download.files[0].path
         thumbnail_path = "assist/thumbnail.jpg"
         if os.path.exists(file_path):
-            async def progress_bar(current, total):
-                if CANCEL_DOWNLOAD.get(message.chat.id):  # Check if cancellation was requested
-                    await status_message.edit("❌ Upload canceled by user.")
-                    return False  # Stop the upload
-
-                progress = int((current / total) * 10)
-                progress_bar = f"[{'■' * progress}{'□' * (10 - progress)}]"
-                upload_text = (
-                    f"Uploading: {progress_bar} {round(current / 1024 / 1024, 1)} Mʙ | {round(total / 1024 / 1024, 1)} Mʙ"
-                )
-                if status_message.text != upload_text:
-                    await status_message.edit(upload_text, reply_markup=InlineKeyboardMarkup([
-                        [InlineKeyboardButton("❌ Cancel", callback_data="cancel")]]
-                    ))
-                await asyncio.sleep(5)  # Add a 5-second delay between progress bar updates
-                return True
-
+            last_update = [time.time()]  # Track the last update time for uploads
             await client.send_document(
                 chat_id=message.chat.id,
                 document=file_path,
                 thumb=thumbnail_path if os.path.exists(thumbnail_path) else None,
                 caption="",  # Empty caption
-                progress=progress_bar
+                progress=lambda current, total: progress_bar(current, total, status_message, last_update)
             )
             await status_message.edit("")  # Clear the status message after upload
             os.remove(file_path)  # Clean up storage
