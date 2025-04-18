@@ -18,61 +18,53 @@ aria2 = API(
 
 CANCEL_DOWNLOAD = {}
 
-def create_progress_bar(current, total):
+def format_progress_bar(current, total):
     try:
-        if total <= 0:  # Check if total is zero or negative
-            return "[□□□□□□□□□□]"
+        if total <= 0:
+            return "[□□□□□□□□□□]", 0, 0
+            
+        # Calculate sizes in MB
+        current_mb = round(current / 1048576, 1)
+        total_mb = round(total / 1048576, 1)
         
-        # Ensure current is not negative and doesn't exceed total
-        current = max(0, min(current, total))
+        # Calculate percentage and ensure it's between 0 and 100
+        percentage = min(100, max(0, int((current * 100) / total)))
         
-        # Calculate percentage with safe division
-        percentage = int((current * 100) / total)
-        
-        # Ensure blocks calculation is safe
+        # Create progress bar
         blocks = min(10, max(0, int(percentage / 10)))
-        completed_blocks = "■" * blocks
-        remaining_blocks = "□" * (10 - blocks)
+        progress_bar = f"[{'■' * blocks}{'□' * (10 - blocks)}]"
         
-        return f"[{completed_blocks}{remaining_blocks}]"
+        return progress_bar, current_mb, total_mb
     except:
-        return "[□□□□□□□□□□]"
+        return "[□□□□□□□□□□]", 0, 0
 
-async def progress_bar(current, total, status_message, last_update):
+async def progress_handler(current, total, message, action, last_update):
     try:
-        if CANCEL_DOWNLOAD.get(status_message.chat.id):
-            await status_message.edit("❌ Upload canceled by user.")
+        if CANCEL_DOWNLOAD.get(message.chat.id):
+            await message.edit("❌ Operation canceled by user.")
             return False
 
-        current_time = time.time()
-        if current_time - last_update[0] >= 5:  # 5-second delay between updates
-            try:
-                # Ensure values are valid
-                current = max(0, current)
-                total = max(1, total)  # Ensure total is never zero
-                
-                # Calculate sizes in MB with safe division
-                current_mb = round(current / 1048576, 1)
-                total_mb = round(total / 1048576, 1)
-                
-                # Create progress bar
-                pbar = create_progress_bar(current, total)
-                
-                # Create progress text
-                progress_text = f"Uploading: {pbar} {current_mb} Mʙ | {total_mb} Mʙ"
-                
-                await status_message.edit(
-                    progress_text,
-                    reply_markup=InlineKeyboardMarkup([
-                        [InlineKeyboardButton("❌ Cancel", callback_data="cancel")]
-                    ])
-                )
-                last_update[0] = current_time
-            except Exception as e:
-                print(f"Progress update error: {str(e)}")
+        now = time.time()
+        if now - last_update[0] < 5:  # Only update every 5 seconds
+            return True
+
+        # Get progress bar and sizes
+        progress_bar, current_mb, total_mb = format_progress_bar(current, total)
+        
+        # Create progress text with consistent format
+        progress_text = f"{action}: {progress_bar} {current_mb} Mʙ | {total_mb} Mʙ"
+        
+        # Update message with progress
+        await message.edit(
+            progress_text,
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("❌ Cancel", callback_data="cancel")]
+            ])
+        )
+        
+        last_update[0] = now
         return True
-    except Exception as e:
-        print(f"Progress bar error: {str(e)}")
+    except:
         return True
 
 @Bot.on_message(filters.command("ddl") & filters.private & filters.user(OWNER_ID))
@@ -97,50 +89,29 @@ async def direct_downloader(client: Client, message: Message):
 
         last_update = [0]  # For tracking last progress update time
         while True:
-            try:
-                if CANCEL_DOWNLOAD.get(message.chat.id):
-                    aria2.remove([gid])
-                    await status_message.edit("❌ Download canceled by user.")
-                    return
+            if CANCEL_DOWNLOAD.get(message.chat.id):
+                aria2.remove([gid])
+                await status_message.edit("❌ Download canceled by user.")
+                return
 
-                download = aria2.get_download(gid)
-                if download.is_complete:
-                    await status_message.edit("✅ Download completed! Preparing to upload...")
-                    break
-                elif download.is_removed:
-                    await status_message.edit("❌ Download canceled or removed.")
-                    return
-                elif download.has_failed:
-                    await status_message.edit("❌ Download failed.")
-                    return
+            download = aria2.get_download(gid)
+            if download.is_complete:
+                await status_message.edit("✅ Download completed! Preparing to upload...")
+                break
+            elif download.is_removed:
+                await status_message.edit("❌ Download canceled or removed.")
+                return
+            elif download.has_failed:
+                await status_message.edit("❌ Download failed.")
+                return
 
-                current_time = time.time()
-                if current_time - last_update[0] >= 5:  # 5-second delay
-                    try:
-                        completed = max(0, download.completed_length)
-                        total = max(1, download.total_length)  # Ensure total is never zero
-                        
-                        # Create download progress bar
-                        pbar = create_progress_bar(completed, total)
-                        current_mb = round(completed / 1048576, 1)
-                        total_mb = round(total / 1048576, 1)
-                        
-                        progress_text = f"Downloading: {pbar} {current_mb} Mʙ | {total_mb} Mʙ"
-                        await status_message.edit(
-                            progress_text,
-                            reply_markup=InlineKeyboardMarkup([
-                                [InlineKeyboardButton("❌ Cancel", callback_data="cancel")]
-                            ])
-                        )
-                        last_update[0] = current_time
-                    except Exception as e:
-                        print(f"Progress update error: {str(e)}")
-                
-                time.sleep(1)  # Small delay to prevent CPU overuse
-            except Exception as e:
-                print(f"Download progress error: {str(e)}")
-                time.sleep(1)
-                continue
+            # Update download progress
+            if time.time() - last_update[0] >= 5:
+                completed = max(0, download.completed_length)
+                total = max(1, download.total_length)
+                await progress_handler(completed, total, status_message, "Downloading", last_update)
+
+            time.sleep(1)  # Small delay to prevent CPU overuse
 
         # Upload the file to Telegram with a thumbnail
         file_path = download.files[0].path
@@ -152,9 +123,10 @@ async def direct_downloader(client: Client, message: Message):
                 document=file_path,
                 thumb=thumbnail_path if os.path.exists(thumbnail_path) else None,
                 caption="",
-                progress=lambda current, total: progress_bar(current, total, status_message, last_update)
+                progress=lambda current, total: progress_handler(
+                    current, total, status_message, "Uploading", last_update
+                )
             )
-            await status_message.edit("")  # Clear the status message after upload
             os.remove(file_path)  # Clean up storage
             await status_message.edit("✅ File uploaded and removed from storage.")
         else:
