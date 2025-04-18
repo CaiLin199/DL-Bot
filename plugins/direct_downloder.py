@@ -5,7 +5,7 @@ from config import OWNER_ID
 from bot import Bot
 from .aria2_client import aria2
 from .progress_utils import create_progress_bar, calculate_eta
-from .file_handler import send_with_thumbnail  # Import from file_handler
+from .file_handler import send_with_thumbnail
 import os
 
 CANCEL_DOWNLOAD = {}
@@ -54,22 +54,13 @@ async def direct_downloader(client: Client, message: Message):
                 await status_message.edit("✅ Download completed! Preparing to upload...")
                 
                 try:
-                    # Create a temporary message object for the uploaded file
-                    temp_message = Message(
-                        id=0,  # Temporary ID
-                        chat=message.chat,
-                        from_user=message.from_user,
-                        text=message.text,  # Original command text
-                        client=client
-                    )
-                    
-                    # Use send_with_thumbnail from file_handler with the message object
+                    # Use send_with_thumbnail with the correct parameters
                     uploaded_message = await send_with_thumbnail(
                         client=client,
-                        message=temp_message,  # Pass the temporary message object
                         file_path=download.files[0].path,
                         chat_id=message.chat.id,
-                        reply_to_message_id=message.id
+                        reply_to_message_id=message.id,
+                        caption=message.text
                     )
                     
                     if uploaded_message:
@@ -87,6 +78,7 @@ async def direct_downloader(client: Client, message: Message):
                         return None
                         
                 except Exception as upload_error:
+                    print(f"Upload error: {str(upload_error)}")
                     await status_message.edit(f"❌ Upload failed: {str(upload_error)}")
                     return None
                     
@@ -105,21 +97,29 @@ async def direct_downloader(client: Client, message: Message):
                     progress_bar, current_mb, total_mb, speed_mb = create_progress_bar(completed, total)
                     eta = calculate_eta(completed, total, speed_mb)
 
+                    progress_text = (
+                        f"Downloading:\n{progress_bar}\n"
+                        f"Size: {current_mb}/{total_mb} MB\n"
+                        f"Speed: {speed_mb} MB/s\n"
+                        f"ETA: {eta}"
+                    )
+
                     await status_message.edit(
-                        f"Downloading:\n{progress_bar} {current_mb}/{total_mb} MB\n"
-                        f"Speed: {speed_mb} MB/s | ETA: {eta}",
+                        progress_text,
                         reply_markup=InlineKeyboardMarkup([
                             [InlineKeyboardButton("❌ Cancel", callback_data="cancel")]
                         ])
                     )
                     last_download_update = current_time
                 except Exception as e:
-                    print(f"Download progress error: {str(e)}")
+                    print(f"Progress update error: {str(e)}")
 
             time.sleep(0.1)
 
     except Exception as e:
-        await message.reply(f"❌ Failed to process: {str(e)}")
+        error_message = f"❌ Failed to process: {str(e)}"
+        print(error_message)
+        await message.reply(error_message)
         return None
 
 @Bot.on_callback_query(filters.regex("cancel"))
