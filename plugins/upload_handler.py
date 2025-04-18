@@ -5,7 +5,7 @@ from bot import Bot
 from pyrogram import Client
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 
-PROGRESS_BAR_LENGTH = 25
+PROGRESS_BAR_LENGTH = 10
 PROGRESS_UPDATE_DELAY = 5
 
 async def progress_callback(current, total, status_message: Message):
