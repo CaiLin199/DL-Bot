@@ -14,14 +14,13 @@ PROGRESS_UPDATE_DELAY = 5
 async def direct_downloader(client: Client, message: Message):
     if len(message.command) < 2:
         await message.reply("Usage: /ddl <direct_link>")
-        return
+        return None
 
     direct_link = message.command[1]
     CANCEL_DOWNLOAD[message.chat.id] = False
     last_download_update = 0
 
     try:
-        # Start the download
         download = aria2.add_uris([direct_link], {
             'continue': 'true',
             'max-connection-per-server': '16',
@@ -38,7 +37,6 @@ async def direct_downloader(client: Client, message: Message):
             ])
         )
 
-        # Download progress monitoring
         while True:
             if CANCEL_DOWNLOAD.get(message.chat.id):
                 aria2.remove([gid])
@@ -48,19 +46,25 @@ async def direct_downloader(client: Client, message: Message):
             try:
                 download = aria2.get_download(gid)
             except Exception as e:
-                print(f"Error getting download: {str(e)}")
-                await status_message.edit("❌ Download failed to start.")
+                await status_message.edit("❌ Download failed.")
                 return None
 
             if download.is_complete:
                 await status_message.edit("✅ Download completed! Preparing to upload...")
-                break
+                uploaded_msg = await handle_upload(
+                    client=client,
+                    message=message,
+                    status_message=status_message,
+                    file_path=download.files[0].path,
+                    chat_id=message.chat.id,
+                    CANCEL_DOWNLOAD=CANCEL_DOWNLOAD
+                )
+                return uploaded_msg  # Return the uploaded message
             elif download.is_removed:
-                await status_message.edit("❌ Download canceled or removed.")
+                await status_message.edit("❌ Download canceled.")
                 return None
             elif download.has_failed:
-                error_msg = f"❌ Download failed.\nError: {download.error_message}"
-                await status_message.edit(error_msg[:4096])
+                await status_message.edit(f"❌ Download failed.\nError: {download.error_message}")
                 return None
 
             current_time = time.time()
@@ -83,18 +87,6 @@ async def direct_downloader(client: Client, message: Message):
                     print(f"Download progress error: {str(e)}")
 
             time.sleep(0.1)
-
-        # Handle file upload and return the uploaded message
-        uploaded_message = await handle_upload(
-            client=client,
-            message=message,
-            status_message=status_message,
-            file_path=download.files[0].path,
-            chat_id=message.chat.id,
-            CANCEL_DOWNLOAD=CANCEL_DOWNLOAD
-        )
-        
-        return uploaded_message  # Return the uploaded message
 
     except Exception as e:
         await message.reply(f"❌ Failed to process: {str(e)}")
