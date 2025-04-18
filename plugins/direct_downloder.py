@@ -5,35 +5,11 @@ from config import OWNER_ID
 from bot import Bot
 from .aria2_client import aria2
 from .progress_utils import create_progress_bar, calculate_eta
+from .file_handler import send_with_thumbnail  # Import from file_handler
 import os
 
 CANCEL_DOWNLOAD = {}
 PROGRESS_UPDATE_DELAY = 5
-
-async def send_with_thumbnail(client: Client, file_path: str, chat_id: int, reply_to_message_id: int = None) -> Message:
-    """Send document with static thumbnail"""
-    try:
-        # Define path for static thumbnail
-        thumb_path = "assist/thumbnail.jpg"
-        
-        # Prepare upload parameters
-        kwargs = {
-            "chat_id": chat_id,
-            "document": file_path,
-        }
-        
-        # Add thumbnail if exists
-        if os.path.exists(thumb_path):
-            kwargs["thumb"] = thumb_path
-            
-        # Add reply_to if provided
-        if reply_to_message_id:
-            kwargs["reply_to_message_id"] = reply_to_message_id
-            
-        return await client.send_document(**kwargs)
-    except Exception as e:
-        print(f"Error sending document: {str(e)}")
-        return None
 
 @Bot.on_message(filters.command("ddl") & filters.private & filters.user(OWNER_ID))
 async def direct_downloader(client: Client, message: Message):
@@ -77,7 +53,7 @@ async def direct_downloader(client: Client, message: Message):
             if download.is_complete:
                 await status_message.edit("✅ Download completed! Preparing to upload...")
                 
-                # Use send_with_thumbnail for upload
+                # Use send_with_thumbnail from file_handler
                 uploaded_message = await send_with_thumbnail(
                     client=client,
                     file_path=download.files[0].path,
