@@ -1,6 +1,7 @@
 from pyrogram import Client, filters
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from config import OWNER_ID
+from bot import Bot
 
 # Store user inputs temporarily
 user_inputs = {}
@@ -27,13 +28,13 @@ async def create_metadata_buttons():
     
     # Add the final submit button
     buttons.append([InlineKeyboardButton(
-        text="✅ Create Post",
+        text="START",
         callback_data="create_post"
     )])
     
     return InlineKeyboardMarkup(buttons)
 
-@Client.on_message(filters.command("post") & filters.private & filters.user(OWNER_ID))
+@Bot.on_message(filters.command("post") & filters.private & filters.user(OWNER_ID))
 async def post_command(client: Client, message: Message):
     """Handler for /post command"""
     # Initialize empty metadata for this user
@@ -52,7 +53,7 @@ async def post_command(client: Client, message: Message):
         reply_markup=await create_metadata_buttons()
     )
 
-@Client.on_callback_query(filters.regex("^input_"))
+@Bot.on_callback_query(filters.regex("^input_"))
 async def handle_metadata_input(client: Client, callback: CallbackQuery):
     """Handle metadata input button clicks"""
     field = callback.data.split('_')[1]
@@ -63,7 +64,7 @@ async def handle_metadata_input(client: Client, callback: CallbackQuery):
     # Update message to wait for input
     await callback.answer()
 
-@Client.on_message(filters.private & filters.user(OWNER_ID))
+@Bot.on_message(filters.private & filters.user(OWNER_ID))
 async def handle_metadata_value(client: Client, message: Message):
     """Handle the actual input values for metadata"""
     user_id = message.from_user.id
@@ -80,7 +81,7 @@ async def handle_metadata_value(client: Client, message: Message):
         reply_markup=await create_metadata_buttons()
     )
 
-@Client.on_callback_query(filters.regex("^create_post$"))
+@Bot.on_callback_query(filters.regex("^create_post$"))
 async def create_final_post(client: Client, callback: CallbackQuery):
     """Create the final post with collected metadata"""
     user_id = callback.from_user.id
