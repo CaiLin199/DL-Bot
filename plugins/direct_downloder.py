@@ -1,15 +1,44 @@
 import time
 from pyrogram import Client, filters
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
-from config import OWNER_ID
+from config import OWNER_ID, CHANNEL_ID, MAIN_CHANNEL
 from bot import Bot
 from .aria2_client import aria2
 from .progress_utils import create_progress_bar, calculate_eta
-from .file_handler import send_with_thumbnail
+from .link_generator import generate_link
+from .channel_poster import send_to_main_channel
 import os
 
 CANCEL_DOWNLOAD = {}
 PROGRESS_UPDATE_DELAY = 5
+last_update_time = time.time()
+
+async def progress(current, total, message, text):
+    global last_update_time
+    
+    try:
+        now = time.time()
+        if (now - last_update_time) < PROGRESS_UPDATE_DELAY:
+            return
+            
+        last_update_time = now
+        
+        if total == 0:
+            total = 0.00001
+            
+        progress_bar, current_mb, total_mb, speed_mb = create_progress_bar(current, total)
+        eta = calculate_eta(current, total, speed_mb)
+        
+        await message.edit(
+            f"{text}\n{progress_bar}\n"
+            f"Size: {current_mb}/{total_mb} MB\n"
+            f"Speed: {speed_mb} MB/s | ETA: {eta}",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("❌ Cancel", callback_data="cancel")]
+            ])
+        )
+    except Exception as e:
+        print(f"Progress update error: {str(e)}")
 
 @Bot.on_message(filters.command("ddl") & filters.private & filters.user(OWNER_ID))
 async def direct_downloader(client: Client, message: Message):
@@ -29,7 +58,6 @@ async def direct_downloader(client: Client, message: Message):
             'min-split-size': '1M'
         })
         gid = download.gid
-        start_time = time.time()
         
         status_message = await message.reply(
             "📥 Download started...\n",
@@ -46,7 +74,7 @@ async def direct_downloader(client: Client, message: Message):
 
             try:
                 download = aria2.get_download(gid)
-            except Exception as e:
+            except Exception:
                 await status_message.edit("❌ Download failed.")
                 return None
 
@@ -54,28 +82,50 @@ async def direct_downloader(client: Client, message: Message):
                 await status_message.edit("✅ Download completed! Preparing to upload...")
                 
                 try:
-                    # Use send_with_thumbnail with the correct parameters
-                    uploaded_message = await send_with_thumbnail(
-                        client=client,
-                        file_path=download.files[0].path,
-                        chat_id=message.chat.id,
-                        reply_to_message_id=message.id,
-                        caption=""
+                    # Step 1: Upload to private channel first (CHANNEL_ID)
+                    channel_message = await client.send_document(
+                        chat_id=CHANNEL_ID,
+                        document=download.files[0].path,
+                        caption=None
                     )
                     
-                    if uploaded_message:
-                        await status_message.delete()
+                    if channel_message:
+                        # Step 2: Generate link
+                        link_data = await generate_link(client, channel_message, CHANNEL_ID)
                         
+                        if link_data and link_data.get("success"):
+                            # Step 3: Create metadata for main channel post
+                            metadata = {
+                                'title': os.path.basename(download.files[0].path),
+                                # Add other metadata if needed
+                            }
+                            
+                            # Step 4: Send formatted post to main channel
+                            main_channel_post = await send_to_main_channel(
+                                client=client,
+                                metadata=metadata,
+                                generated_link=link_data["text"]
+                            )
+                            
+                            if main_channel_post:
+                                await message.reply(
+                                    "✅ File uploaded and posted successfully!"
+                                )
+                            else:
+                                await message.reply(
+                                    "⚠️ File uploaded but failed to post in main channel."
+                                )
+                        else:
+                            await message.reply("⚠️ Failed to generate link.")
+                            
                         # Clean up downloaded file
                         try:
                             os.remove(download.files[0].path)
                         except Exception as e:
                             print(f"Error removing file: {str(e)}")
                             
-                        return uploaded_message
-                    else:
-                        await status_message.edit("❌ Upload failed!")
-                        return None
+                    await status_message.delete()
+                    return channel_message
                         
                 except Exception as upload_error:
                     print(f"Upload error: {str(upload_error)}")
@@ -97,15 +147,10 @@ async def direct_downloader(client: Client, message: Message):
                     progress_bar, current_mb, total_mb, speed_mb = create_progress_bar(completed, total)
                     eta = calculate_eta(completed, total, speed_mb)
 
-                    progress_text = (
-                        f"Downloading:\n{progress_bar}\n"
-                        f"Size: {current_mb}/{total_mb} MB\n"
-                        f"Speed: {speed_mb} MB/s\n"
-                        f"ETA: {eta}"
-                    )
-
                     await status_message.edit(
-                        progress_text,
+                        f"📥 Downloading:\n{progress_bar}\n"
+                        f"Size: {current_mb}/{total_mb} MB\n"
+                        f"Speed: {speed_mb} MB/s | ETA: {eta}",
                         reply_markup=InlineKeyboardMarkup([
                             [InlineKeyboardButton("❌ Cancel", callback_data="cancel")]
                         ])
