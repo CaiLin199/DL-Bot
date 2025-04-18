@@ -18,38 +18,21 @@ aria2 = API(
 
 CANCEL_DOWNLOAD = {}
 
-def make_progress_bar(current, total):
-    if total == 0:
-        total = 1
-    percentage = current * 100 // total
-    digits = min(10, max(0, percentage // 10))
-    return f"[{'■' * digits}{'□' * (10 - digits)}]"
-
-async def progress(current, total, message, type_of_ps):
-    if message.chat.id not in CANCEL_DOWNLOAD:
-        CANCEL_DOWNLOAD[message.chat.id] = False
-        
-    if CANCEL_DOWNLOAD[message.chat.id]:
-        aria2.remove(message.id)
-        await message.edit("❌ Download Cancelled")
-        return False
-        
+def create_progress_bar(current, total):
     try:
-        # Simple progress calculation that won't affect speed
-        bar = make_progress_bar(current, total)
-        percentage = current * 100 // total if total > 0 else 0
-        current_mb = round(current / 1048576, 2)
-        total_mb = round(total / 1048576, 2)
+        if total <= 0:
+            return "[□□□□□□□□□□]", 0, 0
+            
+        current_mb = round(current / 1048576, 1)
+        total_mb = round(total / 1048576, 1)
         
-        await message.edit(
-            f"{type_of_ps}: {bar} {current_mb}/{total_mb} MB",
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("Cancel", callback_data="cancel")
-            ]])
-        )
-    except Exception as e:
-        pass  # Silently handle any message edit errors
-    return True
+        percentage = min(100, max(0, int((current * 100) / total)))
+        blocks = min(10, max(0, int(percentage / 10)))
+        progress_bar = f"[{'■' * blocks}{'□' * (10 - blocks)}]"
+        
+        return progress_bar, current_mb, total_mb
+    except:
+        return "[□□□□□□□□□□]", 0, 0
 
 @Bot.on_message(filters.command("ddl") & filters.private & filters.user(OWNER_ID))
 async def direct_downloader(client: Client, message: Message):
@@ -59,45 +42,107 @@ async def direct_downloader(client: Client, message: Message):
 
     direct_link = message.command[1]
     CANCEL_DOWNLOAD[message.chat.id] = False
+    last_download_update = 0
+    last_upload_update = 0
 
     try:
+        # Start the download
         download = aria2.add_uris([direct_link])
         gid = download.gid
-        status_message = await message.reply("📥 Starting Download...")
+        status_message = await message.reply(
+            "📥 Download started...\n",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("❌ Cancel", callback_data="cancel")]
+            ])
+        )
 
+        # Download progress monitoring
         while True:
+            if CANCEL_DOWNLOAD.get(message.chat.id):
+                aria2.remove([gid])
+                await status_message.edit("❌ Download canceled by user.")
+                return
+
             download = aria2.get_download(gid)
             if download.is_complete:
-                await status_message.edit("✅ Download Complete! Starting Upload...")
+                await status_message.edit("✅ Download completed! Preparing to upload...")
                 break
+            elif download.is_removed:
+                await status_message.edit("❌ Download canceled or removed.")
+                return
             elif download.has_failed:
-                await status_message.edit("❌ Download Failed!")
-                return
-            elif CANCEL_DOWNLOAD.get(message.chat.id):
-                aria2.remove([gid])
-                await status_message.edit("❌ Download Cancelled!")
+                await status_message.edit("❌ Download failed.")
                 return
 
-            total = download.total_length
-            completed = download.completed_length
-            await progress(completed, total, status_message, "Downloading")
-            time.sleep(5)  # Update every 5 seconds without affecting speed
+            current_time = time.time()
+            if current_time - last_download_update >= 5:
+                try:
+                    completed = max(0, download.completed_length)
+                    total = max(1, download.total_length)
+                    progress_bar, current_mb, total_mb = create_progress_bar(completed, total)
+                    
+                    await status_message.edit(
+                        f"Downloading: {progress_bar} {current_mb} Mʙ | {total_mb} Mʙ",
+                        reply_markup=InlineKeyboardMarkup([
+                            [InlineKeyboardButton("❌ Cancel", callback_data="cancel")]
+                        ])
+                    )
+                    last_download_update = current_time
+                except Exception as e:
+                    print(f"Download progress error: {str(e)}")
 
+            time.sleep(5)  # Simple sleep instead of asyncio.sleep
+
+        # Handle file upload
         file_path = download.files[0].path
+        thumbnail_path = "assist/thumbnail.jpg"
+        
         if os.path.exists(file_path):
-            await client.send_document(
-                chat_id=message.chat.id,
-                document=file_path,
-                progress=progress,
-                progress_args=(status_message, "Uploading")
-            )
-            os.remove(file_path)
-            await status_message.edit("✅ Process Completed!")
+            # Start the upload
+            try:
+                await client.send_document(
+                    chat_id=message.chat.id,
+                    document=file_path,
+                    thumb=thumbnail_path if os.path.exists(thumbnail_path) else None,
+                    caption="",
+                    progress=lambda current, total: update_upload_progress(
+                        current, total, status_message, message.chat.id
+                    )
+                )
+                os.remove(file_path)
+                await status_message.edit("✅ File uploaded and removed from storage.")
+            except Exception as e:
+                await status_message.edit(f"❌ Upload failed: {str(e)}")
         else:
-            await status_message.edit("❌ File Not Found!")
+            await status_message.edit("❌ File not found after download.")
 
     except Exception as e:
-        await message.reply(f"❌ Error: {str(e)}")
+        await message.reply(f"❌ Failed to process: {str(e)}")
+
+# Separate function for upload progress
+async def update_upload_progress(current, total, message, chat_id):
+    if not hasattr(update_upload_progress, "last_update"):
+        update_upload_progress.last_update = 0
+
+    try:
+        now = time.time()
+        if now - update_upload_progress.last_update < 5:
+            return
+            
+        if CANCEL_DOWNLOAD.get(chat_id):
+            return False
+
+        progress_bar, current_mb, total_mb = create_progress_bar(current, total)
+        await message.edit(
+            f"Uploading: {progress_bar} {current_mb} Mʙ | {total_mb} Mʙ",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("❌ Cancel", callback_data="cancel")]
+            ])
+        )
+        update_upload_progress.last_update = now
+    except Exception as e:
+        print(f"Upload progress error: {str(e)}")
+    return True
 
 @Bot.on_callback_query(filters.regex("cancel"))
 async def cancel_dl(_, query):
