@@ -5,6 +5,7 @@ from bot import Bot
 from .direct_downloder import direct_downloader
 from .post_metadata import METADATA_FIELDS, user_inputs, user_messages, current_field
 from .post_utils import create_metadata_buttons, reset_user_data
+from .post_creator import create_post_content
 
 @Bot.on_message(filters.command("post") & filters.private & filters.user(OWNER_ID))
 async def post_command(client: Client, message: Message):
@@ -43,7 +44,13 @@ async def handle_metadata_input(client: Client, callback: CallbackQuery):
     
     current_field[user_id] = field
     current_value = user_inputs[user_id][field] if user_id in user_inputs and field in user_inputs[user_id] else None
+    
     instruction_text = f"Please send the {METADATA_FIELDS[field]}:"
+    if field == 'genres':
+        instruction_text += "\nSeparate genres with commas (e.g., Drama, Slice of Life, Comedy)"
+    elif field == 'rating':
+        instruction_text += "\nFormat: X.XX/10 or X/10"
+    
     if current_value:
         instruction_text += f"\n\nCurrent value: {current_value}"
     
@@ -106,15 +113,7 @@ async def create_final_post(client: Client, callback: CallbackQuery):
         return
     
     metadata = user_inputs[user_id]
-    post_text = f"📺 {metadata.get('title', 'No Title')}\n"
-    if metadata.get('episode'):
-        post_text += f"Episode: {metadata['episode']}\n"
-    if metadata.get('rating'):
-        post_text += f"Rating: {metadata['rating']}\n"
-    if metadata.get('description'):
-        post_text += f"Description: {metadata['description']}\n"
-    if metadata.get('genres'):
-        post_text += f"Genres: {metadata['genres']}\n"
+    post_text = create_post_content(metadata)  # Use the new formatting function from post_creator.py
     
     try:
         if metadata.get('cover_url'):
