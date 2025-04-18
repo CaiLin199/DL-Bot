@@ -1,81 +1,59 @@
-import requests
 from bs4 import BeautifulSoup
-import time
-from typing import Dict
+from .scraper_base import BaseScraper
 
-class EpisodeParser:
-    def __init__(self):
-        self.headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
-        self.session = requests.Session()
-        self.session.headers.update(self.headers)
-
-    def get_page_content(self, url: str) -> str:
-        """Fetch page content with retry mechanism"""
-        retries = 3
-        while retries > 0:
-            try:
-                time.sleep(1)  # Respectful delay
-                response = self.session.get(url, timeout=10)
-                if response.status_code == 200:
-                    return response.text
-                retries -= 1
-            except Exception as e:
-                print(f"Error fetching page: {e}")
-                retries -= 1
-        return ""
-
-    def parse_episode_url(self, url: str) -> Dict[str, str]:
-        """Parse episode information from URL"""
-        content = self.get_page_content(url)
+class HentaiScraper(BaseScraper):
+    def get_metadata(self, url: str) -> dict:
+        content = self.get_page(url)
         if not content:
             return {}
 
         try:
             soup = BeautifulSoup(content, 'html.parser')
-            info = {
-                'title': '',
-                'episode': '',
-                'cover': '',
-                'rating': '',
-                'dl_url': '',
-                'series': ''
+            return {
+                **self._get_basic_info(soup),
+                **self._get_media_info(soup),
+                **self._get_content_info(soup)
             }
-
-            # Get title and episode
-            if title_elem := soup.find('h1', {'class': 'entry-title'}):
-                info['title'] = title_elem.text.strip()
-                # Extract episode number
-                if episode_elem := soup.find('span', {'class': 'episode-number'}):
-                    info['episode'] = episode_elem.text.strip()
-
-            # Get cover image
-            if cover_elem := soup.find('div', {'class': 'thumb'}):
-                if img := cover_elem.find('img'):
-                    info['cover'] = img.get('src', '')
-
-            # Get rating
-            if rating_elem := soup.find('div', {'class': 'rating'}):
-                info['rating'] = rating_elem.text.strip()
-
-            # Get download URL
-            if dl_btn := soup.find('a', {'class': 'dl-button'}):
-                info['dl_url'] = dl_btn.get('href', '')
-
-            # Get series name
-            if series_elem := soup.find('div', {'class': 'series-title'}):
-                info['series'] = series_elem.text.strip()
-
-            return info
-
-        except Exception as e:
-            print(f"Error parsing page: {e}")
+        except:
             return {}
 
-    def __del__(self):
-        """Cleanup session on object destruction"""
-        try:
-            self.session.close()
-        except:
-            pass
+    def _get_basic_info(self, soup: BeautifulSoup) -> dict:
+        data = {}
+        
+        if title := soup.find('h1', 'entry-title'):
+            data['title'] = title.text.strip()
+            if 'episode' in data['title'].lower():
+                ep_parts = data['title'].lower().split('episode')
+                data['ep_num'] = ep_parts[-1].strip()
+                data['series'] = ep_parts[0].strip()
+
+        if thumb := soup.select_one('.thumb img[src]'):
+            data['cover'] = thumb['src']
+
+        if dl := soup.select_one('.dl-button[href]'):
+            data['dl_link'] = dl['href']
+
+        return data
+
+    def _get_media_info(self, soup: BeautifulSoup) -> dict:
+        data = {}
+        
+        if info := soup.find('div', 'video-info'):
+            if rating := info.select_one('.rating-score'):
+                data['rating'] = rating.text.strip()
+            if quality := info.select_one('.quality'):
+                data['quality'] = quality.text.strip()
+            if size := info.select_one('.size'):
+                data['size'] = size.text.strip()
+
+        return data
+
+    def _get_content_info(self, soup: BeautifulSoup) -> dict:
+        data = {}
+        
+        if genres := soup.select('.genres a'):
+            data['genres'] = [g.text.strip() for g in genres]
+        if studios := soup.select('.studios a'):
+            data['studios'] = [s.text.strip() for s in studios]
+
+        return data
