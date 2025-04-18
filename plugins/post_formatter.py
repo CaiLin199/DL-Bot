@@ -16,18 +16,7 @@ METADATA_FIELDS = {
     'description': '📄 Description',
     'genres': '🏷️ Genres',
     'cover_url': '🖼️ Cover URL',
-    'download_link': '🔗 Download Link'  # This must match exactly with the callback data
-}
-
-# Reverse mapping for callback data to field keys
-CALLBACK_TO_FIELD = {
-    'title': 'title',
-    'episode': 'episode',
-    'rating': 'rating',
-    'description': 'description',
-    'genres': 'genres',
-    'cover_url': 'cover_url',
-    'download_link': 'download_link'  # Make sure this matches
+    'download_link': '🔗 Download Link'
 }
 
 async def create_metadata_buttons(user_id):
@@ -38,7 +27,7 @@ async def create_metadata_buttons(user_id):
         display_name = f"✅ {field_name}" if user_inputs.get(user_id, {}).get(field_id) else field_name
         buttons.append([InlineKeyboardButton(
             text=display_name,
-            callback_data=f"input_{field_id}"  # Make sure this matches with the field_id
+            callback_data=f"input_{field_id}"
         )])
     
     buttons.append([InlineKeyboardButton(
@@ -90,7 +79,9 @@ async def post_command(client: Client, message: Message):
 async def handle_metadata_input(client: Client, callback: CallbackQuery):
     """Handle metadata input button clicks"""
     user_id = callback.from_user.id
-    field = callback.data.split('_')[1]  # This extracts the field name from callback_data
+    
+    # Get the full field name after 'input_'
+    field = callback.data[6:]
     
     # Verify the field exists in our METADATA_FIELDS
     if field not in METADATA_FIELDS:
@@ -106,6 +97,16 @@ async def handle_metadata_input(client: Client, callback: CallbackQuery):
     if current_value:
         instruction_text += f"\n\nCurrent value: {current_value}"
     
+    # Delete previous instruction message if exists
+    if user_messages[user_id].get('instruction_message'):
+        try:
+            await client.delete_messages(
+                chat_id=callback.message.chat.id,
+                message_ids=user_messages[user_id]['instruction_message']
+            )
+        except Exception as e:
+            print(f"Error deleting previous instruction message: {e}")
+    
     instruction_msg = await callback.message.reply(instruction_text)
     
     # Store instruction message ID for later deletion
@@ -119,14 +120,24 @@ async def handle_metadata_value(client: Client, message: Message):
     user_id = message.from_user.id
     
     # Ignore if not in input mode or if it's a command
-    if user_id not in current_field or message.text.startswith('/'):
+    if user_id not in current_field or message.text is None or message.text.startswith('/'):
         return
     
     field = current_field[user_id]
     
-    # Save the input
+    # Initialize user_inputs for this user if not exists
     if user_id not in user_inputs:
-        user_inputs[user_id] = {}
+        user_inputs[user_id] = {
+            'title': None,
+            'episode': None,
+            'rating': None,
+            'description': None,
+            'genres': None,
+            'cover_url': None,
+            'download_link': None
+        }
+    
+    # Save the input
     user_inputs[user_id][field] = message.text
     
     # Delete the instruction message
