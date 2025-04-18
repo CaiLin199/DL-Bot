@@ -1,11 +1,12 @@
 from pyrogram import Client, filters
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
-from config import OWNER_ID
+from config import OWNER_ID, CHANNEL_ID  # Added CHANNEL_ID import
 from bot import Bot
 from .direct_downloder import direct_downloader
 from .post_metadata import METADATA_FIELDS, user_inputs, user_messages, current_field
 from .post_utils import create_metadata_buttons, reset_user_data
 from .post_creator import create_post_content
+from .file_handler import copy_file_to_channel  # Added this import
 
 @Bot.on_message(filters.command("post") & filters.private & filters.user(OWNER_ID))
 async def post_command(client: Client, message: Message):
@@ -113,9 +114,10 @@ async def create_final_post(client: Client, callback: CallbackQuery):
         return
     
     metadata = user_inputs[user_id]
-    post_text = create_post_content(metadata)  # Use the new formatting function from post_creator.py
+    post_text = create_post_content(metadata)
     
     try:
+        # Step 1: Send the post with metadata
         if metadata.get('cover_url'):
             post_msg = await client.send_photo(
                 chat_id=callback.message.chat.id,
@@ -125,7 +127,9 @@ async def create_final_post(client: Client, callback: CallbackQuery):
         else:
             post_msg = await callback.message.reply_text(post_text)
         
+        # Step 2: Handle download and channel copy if download link exists
         if metadata.get('download_link'):
+            # Create download message object
             download_message = Message(
                 id=0,
                 chat=callback.message.chat,
@@ -134,9 +138,57 @@ async def create_final_post(client: Client, callback: CallbackQuery):
                 command=["ddl", metadata['download_link']],
                 client=client
             )
-            await direct_downloader(client, download_message)
+            
+            # Start download and get the uploaded file message
+            try:
+                uploaded_msg = await direct_downloader(client, download_message)
+                
+                # If download was successful and we got an uploaded file message
+                if uploaded_msg and hasattr(uploaded_msg, 'document'):
+                    try:
+                        # Copy to channel
+                        await copy_file_to_channel(client, uploaded_msg, CHANNEL_ID)
+                        await callback.answer("Post created and file copied to channel successfully!")
+                    except Exception as channel_error:
+                        print(f"Error copying to channel: {str(channel_error)}")
+                        await callback.answer("Post created but channel copy failed.", show_alert=True)
+                else:
+                    await callback.answer("Post created but download failed.", show_alert=True)
+            except Exception as download_error:
+                print(f"Download error: {str(download_error)}")
+                await callback.answer("Post created but download process failed.", show_alert=True)
         
+        # Step 3: Clean up
         reset_user_data(user_id)
-        await callback.answer("Post created successfully!")
+        
     except Exception as e:
-        await callback.answer(f"Error creating post: {str(e)}", show_alert=True)
+        error_message = f"Error creating post: {str(e)}"
+        print(error_message)
+        await callback.answer(error_message[:200], show_alert=True)
+
+@Bot.on_callback_query(filters.regex("^reset$"))
+async def reset_post(client: Client, callback: CallbackQuery):
+    """Reset all metadata fields"""
+    user_id = callback.from_user.id
+    reset_user_data(user_id)
+    
+    user_inputs[user_id] = {
+        'title': None,
+        'episode': None,
+        'rating': None,
+        'description': None,
+        'genres': None,
+        'cover_url': None,
+        'download_link': None
+    }
+    
+    try:
+        await client.edit_message_reply_markup(
+            chat_id=callback.message.chat.id,
+            message_id=callback.message.id,
+            reply_markup=await create_metadata_buttons(user_id)
+        )
+        await callback.answer("All fields have been reset!")
+    except Exception as e:
+        print(f"Error resetting post: {e}")
+        await callback.answer("Failed to reset fields.", show_alert=True)
