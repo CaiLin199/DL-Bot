@@ -53,26 +53,41 @@ async def direct_downloader(client: Client, message: Message):
             if download.is_complete:
                 await status_message.edit("✅ Download completed! Preparing to upload...")
                 
-                # Use send_with_thumbnail from file_handler
-                uploaded_message = await send_with_thumbnail(
-                    client=client,
-                    file_path=download.files[0].path,
-                    chat_id=message.chat.id,
-                    reply_to_message_id=message.id
-                )
-                
-                if uploaded_message:
-                    await status_message.delete()
+                try:
+                    # Create a temporary message object for the uploaded file
+                    temp_message = Message(
+                        id=0,  # Temporary ID
+                        chat=message.chat,
+                        from_user=message.from_user,
+                        text=message.text,  # Original command text
+                        client=client
+                    )
                     
-                    # Clean up downloaded file
-                    try:
-                        os.remove(download.files[0].path)
-                    except:
-                        pass
+                    # Use send_with_thumbnail from file_handler with the message object
+                    uploaded_message = await send_with_thumbnail(
+                        client=client,
+                        message=temp_message,  # Pass the temporary message object
+                        file_path=download.files[0].path,
+                        chat_id=message.chat.id,
+                        reply_to_message_id=message.id
+                    )
+                    
+                    if uploaded_message:
+                        await status_message.delete()
                         
-                    return uploaded_message
-                else:
-                    await status_message.edit("❌ Upload failed!")
+                        # Clean up downloaded file
+                        try:
+                            os.remove(download.files[0].path)
+                        except Exception as e:
+                            print(f"Error removing file: {str(e)}")
+                            
+                        return uploaded_message
+                    else:
+                        await status_message.edit("❌ Upload failed!")
+                        return None
+                        
+                except Exception as upload_error:
+                    await status_message.edit(f"❌ Upload failed: {str(upload_error)}")
                     return None
                     
             elif download.is_removed:
