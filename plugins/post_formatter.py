@@ -16,7 +16,18 @@ METADATA_FIELDS = {
     'description': '📄 Description',
     'genres': '🏷️ Genres',
     'cover_url': '🖼️ Cover URL',
-    'download_link': '🔗 Download Link'
+    'download_link': '🔗 Download Link'  # This must match exactly with the callback data
+}
+
+# Reverse mapping for callback data to field keys
+CALLBACK_TO_FIELD = {
+    'title': 'title',
+    'episode': 'episode',
+    'rating': 'rating',
+    'description': 'description',
+    'genres': 'genres',
+    'cover_url': 'cover_url',
+    'download_link': 'download_link'  # Make sure this matches
 }
 
 async def create_metadata_buttons(user_id):
@@ -27,7 +38,7 @@ async def create_metadata_buttons(user_id):
         display_name = f"✅ {field_name}" if user_inputs.get(user_id, {}).get(field_id) else field_name
         buttons.append([InlineKeyboardButton(
             text=display_name,
-            callback_data=f"input_{field_id}"
+            callback_data=f"input_{field_id}"  # Make sure this matches with the field_id
         )])
     
     buttons.append([InlineKeyboardButton(
@@ -79,16 +90,23 @@ async def post_command(client: Client, message: Message):
 async def handle_metadata_input(client: Client, callback: CallbackQuery):
     """Handle metadata input button clicks"""
     user_id = callback.from_user.id
-    field = callback.data.split('_')[1]
+    field = callback.data.split('_')[1]  # This extracts the field name from callback_data
+    
+    # Verify the field exists in our METADATA_FIELDS
+    if field not in METADATA_FIELDS:
+        await callback.answer(f"Invalid field: {field}", show_alert=True)
+        return
     
     # Store which field is being edited
     current_field[user_id] = field
     
     # Send instruction message and store its ID
-    instruction_msg = await callback.message.reply(
-        f"Please send the {METADATA_FIELDS[field]}:" +
-        ("\n\nCurrent value: " + user_inputs[user_id][field] if user_inputs[user_id][field] else "")
-    )
+    current_value = user_inputs[user_id][field] if user_id in user_inputs and field in user_inputs[user_id] else None
+    instruction_text = f"Please send the {METADATA_FIELDS[field]}:"
+    if current_value:
+        instruction_text += f"\n\nCurrent value: {current_value}"
+    
+    instruction_msg = await callback.message.reply(instruction_text)
     
     # Store instruction message ID for later deletion
     user_messages[user_id]['instruction_message'] = instruction_msg.id
@@ -107,27 +125,30 @@ async def handle_metadata_value(client: Client, message: Message):
     field = current_field[user_id]
     
     # Save the input
+    if user_id not in user_inputs:
+        user_inputs[user_id] = {}
     user_inputs[user_id][field] = message.text
     
     # Delete the instruction message
-    if user_messages[user_id]['instruction_message']:
+    if user_id in user_messages and user_messages[user_id].get('instruction_message'):
         try:
             await client.delete_messages(
                 chat_id=message.chat.id,
                 message_ids=user_messages[user_id]['instruction_message']
             )
-        except:
-            pass
+        except Exception as e:
+            print(f"Error deleting instruction message: {e}")
     
     # Update the main message with updated buttons
-    try:
-        await client.edit_message_reply_markup(
-            chat_id=message.chat.id,
-            message_id=user_messages[user_id]['main_message'],
-            reply_markup=await create_metadata_buttons(user_id)
-        )
-    except:
-        pass
+    if user_id in user_messages and user_messages[user_id].get('main_message'):
+        try:
+            await client.edit_message_reply_markup(
+                chat_id=message.chat.id,
+                message_id=user_messages[user_id]['main_message'],
+                reply_markup=await create_metadata_buttons(user_id)
+            )
+        except Exception as e:
+            print(f"Error updating main message: {e}")
     
     # Clear current field
     current_field[user_id] = None
@@ -135,8 +156,8 @@ async def handle_metadata_value(client: Client, message: Message):
     # Delete user's input message
     try:
         await message.delete()
-    except:
-        pass
+    except Exception as e:
+        print(f"Error deleting user message: {e}")
 
 @Bot.on_callback_query(filters.regex("^create_post$"))
 async def create_final_post(client: Client, callback: CallbackQuery):
@@ -150,33 +171,36 @@ async def create_final_post(client: Client, callback: CallbackQuery):
     metadata = user_inputs[user_id]
     
     # Create the post format
-    post_text = f"📺 {metadata['title'] or 'No Title'}\n"
-    if metadata['episode']:
+    post_text = f"📺 {metadata.get('title', 'No Title')}\n"
+    if metadata.get('episode'):
         post_text += f"Episode: {metadata['episode']}\n"
-    if metadata['rating']:
+    if metadata.get('rating'):
         post_text += f"Rating: {metadata['rating']}\n"
-    if metadata['description']:
+    if metadata.get('description'):
         post_text += f"Description: {metadata['description']}\n"
-    if metadata['genres']:
+    if metadata.get('genres'):
         post_text += f"Genres: {metadata['genres']}\n"
     
-    # Send the formatted post
-    if metadata['cover_url']:
-        await client.send_photo(
-            chat_id=callback.message.chat.id,
-            photo=metadata['cover_url'],
-            caption=post_text
-        )
-    else:
-        await callback.message.reply_text(post_text)
-    
-    # Start download using the direct_downloder
-    if metadata['download_link']:
-        await client.send_message(
-            chat_id=callback.message.chat.id,
-            text=f"/ddl {metadata['download_link']}"
-        )
-    
-    # Clear all stored data for this user
-    reset_user_data(user_id)
-    await callback.answer("Post created successfully!")
+    try:
+        # Send the formatted post
+        if metadata.get('cover_url'):
+            await client.send_photo(
+                chat_id=callback.message.chat.id,
+                photo=metadata['cover_url'],
+                caption=post_text
+            )
+        else:
+            await callback.message.reply_text(post_text)
+        
+        # Start download using the direct_downloder
+        if metadata.get('download_link'):
+            await client.send_message(
+                chat_id=callback.message.chat.id,
+                text=f"/ddl {metadata['download_link']}"
+            )
+        
+        # Clear all stored data for this user
+        reset_user_data(user_id)
+        await callback.answer("Post created successfully!")
+    except Exception as e:
+        await callback.answer(f"Error creating post: {str(e)}", show_alert=True)
