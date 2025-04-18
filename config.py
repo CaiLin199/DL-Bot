@@ -10,6 +10,7 @@ OWNER_ID = int(os.environ.get("OWNER_ID", "5296584067"))
 TG_BOT_TOKEN = os.environ.get("TG_BOT_TOKEN", '0')
 TG_WORKERS = int(os.environ.get("TG_WORKERS", '1'))
 CHANNEL_ID = int(os.environ.get("CHANNEL_ID", '-1002279496397'))
+MAIN_CHANNEL = int(os.environ.get("MAIN_CHANNEL", '-1002372552947'))
 
 # Aria2 RPC configuration
 ARIA2_SECRET = os.environ.get("ARIA2_SECRET", "")  # Optional: Use "" if no secret is set
