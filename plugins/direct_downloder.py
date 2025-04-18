@@ -60,7 +60,7 @@ async def direct_downloader(client: Client, message: Message):
                         file_path=download.files[0].path,
                         chat_id=message.chat.id,
                         reply_to_message_id=message.id,
-                        caption=message.text
+                        caption=""
                     )
                     
                     if uploaded_message:
