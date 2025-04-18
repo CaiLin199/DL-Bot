@@ -3,6 +3,31 @@ from pyrogram.types import Message
 from .link_generator import generate_link
 import os
 
+async def send_with_thumbnail(client: Client, message: Message, file_path: str, chat_id: int) -> Message:
+    """Send document with static thumbnail"""
+    try:
+        # Define path for static thumbnail
+        thumb_path = "assist/thumbnail.jpg"
+        
+        # Send document with or without thumbnail
+        if os.path.exists(thumb_path):
+            return await client.send_document(
+                chat_id=chat_id,
+                document=file_path,
+                thumb=thumb_path,
+                caption=message.text if message.text else None
+            )
+        else:
+            print(f"Warning: Thumbnail not found at {thumb_path}")
+            return await client.send_document(
+                chat_id=chat_id,
+                document=file_path,
+                caption=message.text if message.text else None
+            )
+    except Exception as e:
+        print(f"Error sending document: {str(e)}")
+        return None
+
 async def copy_file_to_channel(client: Client, message: Message, channel_id: int) -> None:
     """Copy document to channel with static thumbnail and create shareable link"""
     try:
@@ -10,9 +35,8 @@ async def copy_file_to_channel(client: Client, message: Message, channel_id: int
             # Define path for static thumbnail
             thumb_path = "assist/thumbnail.jpg"
             
-            # Check if thumbnail exists
+            # Send document to channel with or without thumbnail
             if os.path.exists(thumb_path):
-                # Send document to channel with static thumbnail
                 channel_message = await client.send_document(
                     chat_id=channel_id,
                     document=message.document.file_id,
@@ -21,7 +45,6 @@ async def copy_file_to_channel(client: Client, message: Message, channel_id: int
                     thumb=thumb_path
                 )
             else:
-                # Send document without thumbnail if file doesn't exist
                 channel_message = await client.send_document(
                     chat_id=channel_id,
                     document=message.document.file_id,
