@@ -1,5 +1,6 @@
 import os
 import time
+import asyncio
 from datetime import timedelta
 from pyrogram import Client, filters
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
@@ -18,7 +19,7 @@ aria2 = API(
 
 CANCEL_DOWNLOAD = {}
 
-def format_progress_bar(current, total):
+def create_progress_bar(current, total):
     try:
         if total <= 0:
             return "[□□□□□□□□□□]", 0, 0
@@ -27,7 +28,7 @@ def format_progress_bar(current, total):
         current_mb = round(current / 1048576, 1)
         total_mb = round(total / 1048576, 1)
         
-        # Calculate percentage and ensure it's between 0 and 100
+        # Calculate percentage
         percentage = min(100, max(0, int((current * 100) / total)))
         
         # Create progress bar
@@ -38,34 +39,27 @@ def format_progress_bar(current, total):
     except:
         return "[□□□□□□□□□□]", 0, 0
 
-async def progress_handler(current, total, message, action, last_update):
+async def upload_progress(current, total, status_message, start_time):
+    if not hasattr(upload_progress, "last_update_time"):
+        upload_progress.last_update_time = 0
+
+    now = time.time()
+    if now - upload_progress.last_update_time < 5:
+        return
+
     try:
-        if CANCEL_DOWNLOAD.get(message.chat.id):
-            await message.edit("❌ Operation canceled by user.")
-            return False
-
-        now = time.time()
-        if now - last_update[0] < 5:  # Only update every 5 seconds
-            return True
-
-        # Get progress bar and sizes
-        progress_bar, current_mb, total_mb = format_progress_bar(current, total)
+        progress_bar, current_mb, total_mb = create_progress_bar(current, total)
+        progress_text = f"Uploading: {progress_bar} {current_mb} Mʙ | {total_mb} Mʙ"
         
-        # Create progress text with consistent format
-        progress_text = f"{action}: {progress_bar} {current_mb} Mʙ | {total_mb} Mʙ"
-        
-        # Update message with progress
-        await message.edit(
+        await status_message.edit(
             progress_text,
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("❌ Cancel", callback_data="cancel")]
             ])
         )
-        
-        last_update[0] = now
-        return True
-    except:
-        return True
+        upload_progress.last_update_time = now
+    except Exception as e:
+        print(f"Error in upload progress: {str(e)}")
 
 @Bot.on_message(filters.command("ddl") & filters.private & filters.user(OWNER_ID))
 async def direct_downloader(client: Client, message: Message):
@@ -87,7 +81,7 @@ async def direct_downloader(client: Client, message: Message):
             ])
         )
 
-        last_update = [0]  # For tracking last progress update time
+        last_update = [0]
         while True:
             if CANCEL_DOWNLOAD.get(message.chat.id):
                 aria2.remove([gid])
@@ -106,28 +100,44 @@ async def direct_downloader(client: Client, message: Message):
                 return
 
             # Update download progress
-            if time.time() - last_update[0] >= 5:
-                completed = max(0, download.completed_length)
-                total = max(1, download.total_length)
-                await progress_handler(completed, total, status_message, "Downloading", last_update)
+            current_time = time.time()
+            if current_time - last_update[0] >= 5:
+                try:
+                    completed = max(0, download.completed_length)
+                    total = max(1, download.total_length)
+                    progress_bar, current_mb, total_mb = create_progress_bar(completed, total)
+                    progress_text = f"Downloading: {progress_bar} {current_mb} Mʙ | {total_mb} Mʙ"
+                    
+                    await status_message.edit(
+                        progress_text,
+                        reply_markup=InlineKeyboardMarkup([
+                            [InlineKeyboardButton("❌ Cancel", callback_data="cancel")]
+                        ])
+                    )
+                    last_update[0] = current_time
+                except Exception as e:
+                    print(f"Error in download progress: {str(e)}")
 
-            time.sleep(1)  # Small delay to prevent CPU overuse
+            await asyncio.sleep(1)
 
-        # Upload the file to Telegram with a thumbnail
+        # Upload the file to Telegram
         file_path = download.files[0].path
         thumbnail_path = "assist/thumbnail.jpg"
+        
         if os.path.exists(file_path):
-            last_update = [0]  # Reset update timer for upload
+            start_time = time.time()
+            upload_progress.last_update_time = 0  # Reset the update time
+            
             await client.send_document(
                 chat_id=message.chat.id,
                 document=file_path,
                 thumb=thumbnail_path if os.path.exists(thumbnail_path) else None,
                 caption="",
-                progress=lambda current, total: progress_handler(
-                    current, total, status_message, "Uploading", last_update
-                )
+                progress=upload_progress,
+                progress_args=(status_message, start_time)
             )
-            os.remove(file_path)  # Clean up storage
+            
+            os.remove(file_path)
             await status_message.edit("✅ File uploaded and removed from storage.")
         else:
             await status_message.edit("❌ File not found after download.")
