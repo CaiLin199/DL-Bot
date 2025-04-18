@@ -3,7 +3,7 @@ from pyrogram.types import Message
 from .link_generator import generate_link
 import os
 
-async def send_with_thumbnail(client: Client, message: Message, file_path: str, chat_id: int, reply_to_message_id: int = None) -> Message:
+async def send_with_thumbnail(client: Client, file_path: str, chat_id: int, reply_to_message_id: int = None, caption: str = None) -> Message:
     """Send document with static thumbnail"""
     try:
         # Define path for static thumbnail
@@ -13,7 +13,7 @@ async def send_with_thumbnail(client: Client, message: Message, file_path: str, 
         send_params = {
             'chat_id': chat_id,
             'document': file_path,
-            'caption': message.text if message.text else None
+            'caption': caption
         }
         
         # Add thumbnail if exists
