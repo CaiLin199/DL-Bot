@@ -4,11 +4,36 @@ from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from config import OWNER_ID
 from bot import Bot
 from .aria2_client import aria2
-from .upload_handler import handle_upload
 from .progress_utils import create_progress_bar, calculate_eta
+import os
 
 CANCEL_DOWNLOAD = {}
 PROGRESS_UPDATE_DELAY = 5
+
+async def send_with_thumbnail(client: Client, file_path: str, chat_id: int, reply_to_message_id: int = None) -> Message:
+    """Send document with static thumbnail"""
+    try:
+        # Define path for static thumbnail
+        thumb_path = "assist/thumbnail.jpg"
+        
+        # Prepare upload parameters
+        kwargs = {
+            "chat_id": chat_id,
+            "document": file_path,
+        }
+        
+        # Add thumbnail if exists
+        if os.path.exists(thumb_path):
+            kwargs["thumb"] = thumb_path
+            
+        # Add reply_to if provided
+        if reply_to_message_id:
+            kwargs["reply_to_message_id"] = reply_to_message_id
+            
+        return await client.send_document(**kwargs)
+    except Exception as e:
+        print(f"Error sending document: {str(e)}")
+        return None
 
 @Bot.on_message(filters.command("ddl") & filters.private & filters.user(OWNER_ID))
 async def direct_downloader(client: Client, message: Message):
@@ -51,15 +76,29 @@ async def direct_downloader(client: Client, message: Message):
 
             if download.is_complete:
                 await status_message.edit("✅ Download completed! Preparing to upload...")
-                uploaded_msg = await handle_upload(
+                
+                # Use send_with_thumbnail for upload
+                uploaded_message = await send_with_thumbnail(
                     client=client,
-                    message=message,
-                    status_message=status_message,
                     file_path=download.files[0].path,
                     chat_id=message.chat.id,
-                    CANCEL_DOWNLOAD=CANCEL_DOWNLOAD
+                    reply_to_message_id=message.id
                 )
-                return uploaded_msg  # Return the uploaded message
+                
+                if uploaded_message:
+                    await status_message.delete()
+                    
+                    # Clean up downloaded file
+                    try:
+                        os.remove(download.files[0].path)
+                    except:
+                        pass
+                        
+                    return uploaded_message
+                else:
+                    await status_message.edit("❌ Upload failed!")
+                    return None
+                    
             elif download.is_removed:
                 await status_message.edit("❌ Download canceled.")
                 return None
