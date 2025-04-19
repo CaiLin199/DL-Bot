@@ -1,4 +1,5 @@
 from pyrogram import Client
+from config import BOT_USERNAME
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 import base64
 
@@ -22,7 +23,7 @@ async def generate_link(client: Client, channel_message: Message, channel_id: in
             
             if base64_string:
                 # Create the link
-                link = f"https://t.me/HeavenlySubsBot?start={base64_string}"
+                link = f"https://t.me/{BOT_USERNAME}?start={base64_string}"
                 
                 # Create share button
                 reply_markup = InlineKeyboardMarkup([
