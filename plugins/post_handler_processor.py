@@ -31,13 +31,11 @@ class PostProcessor:
         """Handle metadata input callbacks"""
         try:
             user_id = callback_query.from_user.id
-            field = callback_query.data.split('_', 1)[1]  # Split only once to get the field name
+            field = callback_query.data.split('_', 1)[1]
             
-            # Handle the case where field might be 'download' instead of 'download_link'
             if field == 'download':
                 field = 'download_link'
             
-            # Safety check for field existence
             if field not in metadata_fields:
                 await callback_query.answer(f"Invalid field: {field}", show_alert=True)
                 return
@@ -51,7 +49,6 @@ class PostProcessor:
                 ]])
             )
             
-            # Store the current field and input message
             PostProcessor._user_metadata.setdefault(user_id, {})
             PostProcessor._user_metadata[user_id]['current_field'] = field
             PostProcessor._user_metadata[user_id]['input_message'] = input_msg
@@ -75,16 +72,13 @@ class PostProcessor:
             return
         
         try:
-            # Save the metadata
             metadata[current_field] = message.text
             await input_message.delete()
             await message.delete()
             
-            # Clear current field and input message
             metadata['current_field'] = None
             metadata['input_message'] = None
             
-            # Update buttons if possible
             if user_id in PostProcessor._user_messages:
                 await update_buttons_callback(PostProcessor._user_messages[user_id], user_id)
         except Exception as e:
@@ -98,7 +92,6 @@ class PostProcessor:
         user_id = callback_query.from_user.id
         metadata = PostProcessor._user_metadata.get(user_id, {})
         status_message = None
-        download_message = None
         result_message = None
         
         if not metadata.get('download_link'):
@@ -106,27 +99,26 @@ class PostProcessor:
             return
         
         try:
-            # Create status message
             status_message = await callback_query.message.reply_text("⏳ Starting download process...")
             
-            # Create download message
-            download_message = await callback_query.message.reply_text("/ddl " + metadata['download_link'])
-            download_message.command = ['ddl', metadata['download_link']]
+            # Create virtual command message without sending
+            command_message = {
+                "chat": callback_query.message.chat,
+                "from_user": callback_query.from_user,
+                "text": f"/ddl {metadata['download_link']}",
+                "command": ["ddl", metadata['download_link']]
+            }
             
-            # Start the download process
             logger.info(f"Starting download for link: {metadata['download_link']}")
-            result_message = await download_and_upload(client, download_message)
+            result_message = await download_and_upload(client, Message._parse(client, command_message))
             
-            # Check for actual file in the message
             if hasattr(result_message, 'document') or hasattr(result_message, 'video'):
                 await status_message.edit_text("✅ File downloaded, sending to channel...")
                 
                 try:
-                    # Save to channel and get share link
                     link_info = await save_to_channel(client, result_message)
                     
                     if link_info and 'text' in link_info and 'reply_markup' in link_info:
-                        # Send message with link and share button
                         await callback_query.message.reply_text(
                             text=link_info["text"],
                             reply_markup=link_info["reply_markup"],
@@ -149,7 +141,6 @@ class PostProcessor:
                 await status_message.edit_text(f"❌ Error: {str(e)}")
     
         finally:
-            # Cleanup metadata and messages
             try:
                 if user_id in PostProcessor._user_metadata:
                     del PostProcessor._user_metadata[user_id]
@@ -157,11 +148,9 @@ class PostProcessor:
                     await PostProcessor._user_messages[user_id].delete()
                     del PostProcessor._user_messages[user_id]
                 
-                # Wait a few seconds before cleaning up messages
                 await asyncio.sleep(3)
-                
-                if download_message:
-                    await download_message.delete()
+                if status_message:
+                    await status_message.delete()
                 
             except Exception as e:
                 logger.error(f"Cleanup error: {str(e)}")
