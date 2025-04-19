@@ -1,5 +1,5 @@
 from pyrogram import Client
-from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, Chat
 from .individual_downloader import download_and_upload
 from .item_on_db import save_to_channel
 import asyncio
@@ -109,13 +109,8 @@ class PostProcessor:
             # Create status message
             status_message = await callback_query.message.reply_text("⏳ Starting download process...")
             
-            # Prepare download message with command
-            download_message = Message(
-                message_id=0,
-                chat=callback_query.message.chat,
-                text=metadata['download_link'],
-                client=client
-            )
+            # Create download message
+            download_message = await callback_query.message.reply_text("/ddl " + metadata['download_link'])
             download_message.command = ['ddl', metadata['download_link']]
             
             # Start the download process
