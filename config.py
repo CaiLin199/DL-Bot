@@ -11,7 +11,7 @@ TG_BOT_TOKEN = os.environ.get("TG_BOT_TOKEN", '0')
 TG_WORKERS = int(os.environ.get("TG_WORKERS", '1'))
 CHANNEL_ID = int(os.environ.get("CHANNEL_ID", '-1002279496397'))
 MAIN_CHANNEL = int(os.environ.get("MAIN_CHANNEL", '-1002372552947'))
-BOT_USERNAME = os.environ.get("BOT_USERNAME", 'https://t.me/@HeavenlySubsBot')
+BOT_USERNAME = os.environ.get("BOT_USERNAME", 'HeavenlySubsBot')
 
 # Aria2 RPC configuration
 ARIA2_SECRET = os.environ.get("ARIA2_SECRET", "")  # Optional: Use "" if no secret is set
