@@ -1,13 +1,13 @@
 from pyrogram import Client, filters
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
-from config import OWNER_ID, CHANNEL_ID, MAIN_CHANNEL  # Added MAIN_CHANNEL
+from config import OWNER_ID, CHANNEL_ID, MAIN_CHANNEL
 from bot import Bot
-from .direct_downloder import direct_downloader
 from .post_metadata import METADATA_FIELDS, user_inputs, user_messages, current_field
 from .post_utils import create_metadata_buttons, reset_user_data
 from .post_creator import create_post_content
-from .file_handler import copy_file_to_channel
-from .channel_poster import send_to_main_channel  # Added this import
+from .link_generator import generate_link
+from .channel_poster import send_to_main_channel
+from .direct_downloder import direct_downloader
 
 @Bot.on_message(filters.command("post") & filters.private & filters.user(OWNER_ID))
 async def post_command(client: Client, message: Message):
@@ -67,7 +67,7 @@ async def handle_metadata_input(client: Client, callback: CallbackQuery):
 
     instruction_msg = await callback.message.reply(instruction_text)
     user_messages[user_id]['instruction_message'] = instruction_msg.id
-    await callback.answer()
+    await callback.answer(cache_time=5)
 
 @Bot.on_message(filters.private & filters.user(OWNER_ID))
 async def handle_metadata_value(client: Client, message: Message):
@@ -111,7 +111,7 @@ async def create_final_post(client: Client, callback: CallbackQuery):
     user_id = callback.from_user.id
 
     if not user_inputs.get(user_id, {}).get('download_link'):
-        await callback.answer("Download link is mandatory!", show_alert=True)
+        await callback.answer("Download link is mandatory!", show_alert=True, cache_time=5)
         return
 
     metadata = user_inputs[user_id]
@@ -128,7 +128,7 @@ async def create_final_post(client: Client, callback: CallbackQuery):
         else:
             post_msg = await callback.message.reply_text(post_text)
 
-        # Step 2: Handle download and channel copy if download link exists
+        # Step 2: Handle download link
         if metadata.get('download_link'):
             # Create download message object
             download_message = Message(
@@ -140,50 +140,45 @@ async def create_final_post(client: Client, callback: CallbackQuery):
                 client=client
             )
 
-            # Start download and get the uploaded file message
             try:
-                uploaded_msg = await direct_downloader(client, download_message)
+                # Get the channel message from direct_downloader
+                channel_message = await direct_downloader(client, download_message)
 
-                # If download was successful and we got an uploaded file message
-                if uploaded_msg and hasattr(uploaded_msg, 'document'):
-                    try:
-                        # Copy to storage channel and get link
-                        link_data = await copy_file_to_channel(client, uploaded_msg, CHANNEL_ID)
+                if channel_message and hasattr(channel_message, 'document'):
+                    # Generate link directly from channel message
+                    link_data = await generate_link(client, channel_message, CHANNEL_ID)
+                    
+                    if link_data and link_data.get("success"):
+                        # Create and send main channel post
+                        main_post = await send_to_main_channel(
+                            client=client,
+                            metadata=metadata,
+                            generated_link=link_data["text"]
+                        )
                         
-                        if link_data and link_data.get("success"):
-                            # Extract the generated link
-                            generated_link = link_data["text"].split("\n\n")[1]
-                            
-                            # Send to main channel
-                            channel_post_success = await send_to_main_channel(
-                                client=client,
-                                metadata=metadata,
-                                generated_link=generated_link
-                            )
-                            
-                            if channel_post_success:
-                                await callback.answer("Post created and sent to all channels successfully!", show_alert=True)
-                            else:
-                                await callback.answer("Post created but main channel post failed!", show_alert=True)
+                        if main_post:
+                            await callback.answer("✅ Post created and sent successfully!", show_alert=True, cache_time=5)
                         else:
-                            await callback.answer("Post created but link generation failed!", show_alert=True)
-                            
-                    except Exception as channel_error:
-                        print(f"Channel posting error: {str(channel_error)}")
-                        await callback.answer("Error in channel operations", show_alert=True)
+                            await callback.answer("⚠️ Post created but failed to send to main channel!", show_alert=True, cache_time=5)
+                    else:
+                        await callback.answer("⚠️ Download successful but link generation failed!", show_alert=True, cache_time=5)
                 else:
-                    await callback.answer("Post created but download failed.", show_alert=True)
+                    await callback.answer("❌ Failed to download and process file!", show_alert=True, cache_time=5)
+
             except Exception as download_error:
                 print(f"Download error: {str(download_error)}")
-                await callback.answer("Post created but download process failed.", show_alert=True)
+                await callback.answer("❌ Failed to process download!", show_alert=True, cache_time=5)
 
-        # Step 3: Clean up
+        # Clean up
         reset_user_data(user_id)
 
     except Exception as e:
         error_message = f"Error creating post: {str(e)}"
         print(error_message)
-        await callback.answer(error_message[:200], show_alert=True)
+        try:
+            await callback.answer(error_message[:200], show_alert=True, cache_time=5)
+        except Exception:
+            pass
 
 @Bot.on_callback_query(filters.regex("^reset$"))
 async def reset_post(client: Client, callback: CallbackQuery):
@@ -207,7 +202,7 @@ async def reset_post(client: Client, callback: CallbackQuery):
             message_id=callback.message.id,
             reply_markup=await create_metadata_buttons(user_id)
         )
-        await callback.answer("All fields have been reset!")
+        await callback.answer("All fields have been reset!", cache_time=5)
     except Exception as e:
         print(f"Error resetting post: {e}")
-        await callback.answer("Failed to reset fields.", show_alert=True)
+        await callback.answer("Failed to reset fields.", show_alert=True, cache_time=5)
