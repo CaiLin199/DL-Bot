@@ -1,8 +1,8 @@
 from pyrogram import Client, filters
 from pyrogram.types import Message
 import os
-from dl_progressbar import DownloadProgressBar
-from up_progressbar import UploadProgressBar
+from .dl_progressbar import DownloadProgressBar
+from .up_progressbar import UploadProgressBar
 from aria2p import API, Client as Aria2Client
 from config import ARIA2_SECRET, ARIA2_HOST, ARIA2_PORT
 
