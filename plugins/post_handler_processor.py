@@ -1,5 +1,6 @@
 from pyrogram import Client
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, Chat
+from pyrogram.enums import MessageEntityType
 from .individual_downloader import download_and_upload
 from .item_on_db import save_to_channel
 import asyncio
@@ -101,16 +102,16 @@ class PostProcessor:
         try:
             status_message = await callback_query.message.reply_text("⏳ Starting download process...")
             
-            # Create virtual command message without sending
-            command_message = {
-                "chat": callback_query.message.chat,
-                "from_user": callback_query.from_user,
-                "text": f"/ddl {metadata['download_link']}",
-                "command": ["ddl", metadata['download_link']]
-            }
+            # Create a temporary message for download command
+            temp_message = await client.send_message(
+                chat_id=callback_query.message.chat.id,
+                text=f"/ddl {metadata['download_link']}"
+            )
+            temp_message.command = ["ddl", metadata['download_link']]
+            await temp_message.delete()  # Delete immediately
             
             logger.info(f"Starting download for link: {metadata['download_link']}")
-            result_message = await download_and_upload(client, Message._parse(client, command_message))
+            result_message = await download_and_upload(client, temp_message)
             
             if hasattr(result_message, 'document') or hasattr(result_message, 'video'):
                 await status_message.edit_text("✅ File downloaded, sending to channel...")
