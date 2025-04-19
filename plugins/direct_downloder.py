@@ -58,13 +58,13 @@ async def direct_downloader(client: Client, message: Message):
             ])
         )
 
-        # Modified aria2 options to fix range header issues
         try:
+            # Modified aria2 options for better handling
             download = aria2.add_uris([direct_link], {
                 'continue': 'true',
-                'max-connection-per-server': '1',  # Reduced connections
-                'split': '1',  # Disabled splitting
-                'min-split-size': '20M',  # Increased min split size
+                'max-connection-per-server': '1',
+                'split': '1',
+                'min-split-size': '20M',
                 'check-integrity': 'true',
                 'retry-wait': '3',
                 'max-tries': '5'
@@ -74,6 +74,7 @@ async def direct_downloader(client: Client, message: Message):
             await status_message.edit(f"❌ Download initialization failed: {str(aria_error)}")
             return None
 
+        file_path = None
         while True:
             if CANCEL_DOWNLOAD.get(message.chat.id):
                 aria2.remove([gid])
@@ -87,28 +88,12 @@ async def direct_downloader(client: Client, message: Message):
                 return None
 
             if download.is_complete:
-                await status_message.edit("✅ Download completed! Processing file...")
                 file_path = download.files[0].path
+                await status_message.edit("✅ Download completed! Processing file...")
                 break
             elif download.has_failed:
-                # If download fails, try with different options
-                try:
-                    aria2.remove([gid])
-                    download = aria2.add_uris([direct_link], {
-                        'continue': 'true',
-                        'max-connection-per-server': '1',
-                        'split': '1',
-                        'min-split-size': '20M',
-                        'check-integrity': 'false',
-                        'retry-wait': '3',
-                        'max-tries': '5',
-                        'stream-piece-selector': 'inorder'
-                    })
-                    gid = download.gid
-                    continue
-                except Exception:
-                    await status_message.edit(f"❌ Download failed.\nError: {download.error_message}")
-                    return None
+                await status_message.edit(f"❌ Download failed.\nError: {download.error_message}")
+                return None
             elif download.is_removed:
                 await status_message.edit("❌ Download canceled.")
                 return None
@@ -132,37 +117,41 @@ async def direct_downloader(client: Client, message: Message):
 
             await asyncio.sleep(PROGRESS_UPDATE_DELAY)
 
+        if not file_path or not os.path.exists(file_path):
+            await status_message.edit("❌ Downloaded file not found!")
+            return None
+
         try:
-            # Step 1: Send to bot PM with thumbnail
-            await status_message.edit("📤 Uploading with thumbnail...")
-            pm_message = await send_with_thumbnail(
+            # Send directly to channel with thumbnail
+            await status_message.edit("📤 Uploading to channel...")
+            channel_message = await send_with_thumbnail(
                 client=client,
                 file_path=file_path,
+                chat_id=CHANNEL_ID,
+                caption=None  # We'll format the caption later
+            )
+
+            if not channel_message:
+                await status_message.edit("❌ Failed to upload to channel!")
+                return None
+
+            # Send copy to PM for preview
+            await status_message.edit("📬 Sending preview...")
+            pm_message = await channel_message.copy(
                 chat_id=message.chat.id,
                 reply_to_message_id=message.id
             )
 
-            if not pm_message:
-                await status_message.edit("❌ Failed to upload with thumbnail!")
-                return None
+            await status_message.edit("✅ Upload completed successfully!")
+            return channel_message  # Return channel message for post formatter
 
-            # Step 2: Copy to CHANNEL_ID
-            copy_result = await copy_file_to_channel(client, pm_message, CHANNEL_ID)
-            
-            if not copy_result.get("success"):
-                await status_message.edit(f"❌ Failed to copy to channel: {copy_result.get('error')}")
-                return None
-
-            await status_message.edit("✅ File uploaded successfully!")
-            return pm_message
-
-        except Exception as process_error:
-            await status_message.edit(f"❌ Process failed: {str(process_error)}")
+        except Exception as upload_error:
+            await status_message.edit(f"❌ Upload failed: {str(upload_error)}")
             return None
         finally:
-            # Clean up
+            # Clean up downloaded file
             try:
-                if os.path.exists(file_path):
+                if file_path and os.path.exists(file_path):
                     os.remove(file_path)
             except Exception as e:
                 print(f"Cleanup error: {str(e)}")
