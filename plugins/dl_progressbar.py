@@ -10,7 +10,7 @@ class DownloadProgressBar:
         now = time.time()
         
         # Update progress every 2 seconds to avoid flood
-        if now - self.last_update_time < 2:
+        if now - self.last_update_time < 3:
             return
         
         self.last_update_time = now
