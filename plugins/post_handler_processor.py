@@ -4,14 +4,16 @@ from .individual_downloader import download_and_upload
 import asyncio
 
 class PostProcessor:
-    # Static storage
+    # Static storage for user metadata and messages
     _user_metadata = {}
     _user_messages = {}
 
     @classmethod
     def get_user_metadata(cls, user_id: int) -> dict:
         """Get user metadata"""
-        return cls._user_metadata.get(user_id, {})
+        if user_id not in cls._user_metadata:
+            cls._user_metadata[user_id] = {}
+        return cls._user_metadata[user_id]
 
     @classmethod
     def set_user_message(cls, user_id: int, message: Message):
@@ -22,18 +24,35 @@ class PostProcessor:
     @staticmethod
     async def handle_metadata_input(client: Client, callback_query: CallbackQuery, metadata_fields: dict):
         """Handle metadata input callbacks"""
-        user_id = callback_query.from_user.id
-        field = callback_query.data.split('_')[1]
-        
-        input_msg = await callback_query.message.reply_text(
-            f"Please send the {metadata_fields[field].lower()}:",
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("❌ Cancel", callback_data="cancel_input")
-            ]])
-        )
-        
-        PostProcessor._user_metadata[user_id]['current_field'] = field
-        PostProcessor._user_metadata[user_id]['input_message'] = input_msg
+        try:
+            user_id = callback_query.from_user.id
+            field = callback_query.data.split('_', 1)[1]  # Split only once to get the field name
+            
+            # Handle the case where field might be 'download' instead of 'download_link'
+            if field == 'download':
+                field = 'download_link'
+            
+            # Safety check for field existence
+            if field not in metadata_fields:
+                await callback_query.answer(f"Invalid field: {field}", show_alert=True)
+                return
+            
+            field_display_name = metadata_fields[field].replace('⬇️', '').replace('📝', '').replace('🎬', '').replace('🏷', '').replace('📋', '').replace('🖼', '').replace('⭐', '').strip()
+            
+            input_msg = await callback_query.message.reply_text(
+                f"Please send the {field_display_name}:",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("❌ Cancel", callback_data="cancel_input")
+                ]])
+            )
+            
+            # Store the current field and input message
+            PostProcessor._user_metadata.setdefault(user_id, {})
+            PostProcessor._user_metadata[user_id]['current_field'] = field
+            PostProcessor._user_metadata[user_id]['input_message'] = input_msg
+            
+        except Exception as e:
+            await callback_query.answer(f"Error: {str(e)}", show_alert=True)
 
     @staticmethod
     async def save_metadata(client: Client, message: Message, update_buttons_callback):
@@ -49,15 +68,22 @@ class PostProcessor:
         if not current_field or not input_message:
             return
         
-        metadata[current_field] = message.text
-        await input_message.delete()
-        await message.delete()
-        
-        metadata['current_field'] = None
-        metadata['input_message'] = None
-        
-        if user_id in PostProcessor._user_messages:
-            await update_buttons_callback(PostProcessor._user_messages[user_id], user_id)
+        try:
+            # Save the metadata
+            metadata[current_field] = message.text
+            await input_message.delete()
+            await message.delete()
+            
+            # Clear current field and input message
+            metadata['current_field'] = None
+            metadata['input_message'] = None
+            
+            # Update buttons if possible
+            if user_id in PostProcessor._user_messages:
+                await update_buttons_callback(PostProcessor._user_messages[user_id], user_id)
+        except Exception as e:
+            if user_id in PostProcessor._user_messages:
+                await PostProcessor._user_messages[user_id].reply_text(f"Error saving metadata: {str(e)}")
 
     @staticmethod
     async def start_download_process(client: Client, callback_query: CallbackQuery):
@@ -66,26 +92,37 @@ class PostProcessor:
         metadata = PostProcessor._user_metadata.get(user_id, {})
         
         if not metadata.get('download_link'):
-            await callback_query.answer("Download link is required!")
+            await callback_query.answer("Download link is required!", show_alert=True)
             return
         
-        download_message = await callback_query.message.reply_text("Starting download process...")
-        download_message.command = ['ddl', metadata['download_link']]
-        
-        await download_and_upload(client, download_message)
-        
-        # Store metadata for future use (you can implement storage later)
-        stored_metadata = {
-            key: value for key, value in metadata.items() 
-            if key not in ['current_field', 'input_message']
-        }
-        
-        # Cleanup
-        if user_id in PostProcessor._user_metadata:
-            del PostProcessor._user_metadata[user_id]
-        if user_id in PostProcessor._user_messages:
-            await PostProcessor._user_messages[user_id].delete()
-            del PostProcessor._user_messages[user_id]
+        try:
+            # Create status message
+            status_message = await callback_query.message.reply_text("Starting download process...")
+            
+            # Prepare download message for download_and_upload function
+            download_message = await callback_query.message.reply_text("Processing...")
+            download_message.command = ['ddl', metadata['download_link']]
+            
+            # Start the download process
+            await download_and_upload(client, download_message)
+            
+            # Store metadata for future use (you can implement storage later)
+            stored_metadata = {
+                key: value for key, value in metadata.items() 
+                if key not in ['current_field', 'input_message']
+            }
+            
+            # Cleanup
+            if user_id in PostProcessor._user_metadata:
+                del PostProcessor._user_metadata[user_id]
+            if user_id in PostProcessor._user_messages:
+                await PostProcessor._user_messages[user_id].delete()
+                del PostProcessor._user_messages[user_id]
+            
+            await status_message.delete()
+            
+        except Exception as e:
+            await callback_query.message.reply_text(f"Error in download process: {str(e)}")
 
     @staticmethod
     async def preview_post(callback_query: CallbackQuery, metadata_fields: dict):
@@ -94,18 +131,22 @@ class PostProcessor:
         metadata = PostProcessor._user_metadata.get(user_id, {})
         
         if not metadata:
-            await callback_query.answer("No metadata available for preview!")
+            await callback_query.answer("No metadata available for preview!", show_alert=True)
             return
         
-        preview_text = "📝 Post Preview:\n\n"
-        for field, display_name in metadata_fields.items():
-            if field in metadata and field != 'current_field' and field != 'input_message':
-                value = metadata.get(field, "Not set")
-                preview_text += f"{display_name}: {value}\n"
-        
-        preview_message = await callback_query.message.reply_text(preview_text)
-        await asyncio.sleep(10)
-        await preview_message.delete()
+        try:
+            preview_text = "📝 Post Preview:\n\n"
+            for field, display_name in metadata_fields.items():
+                if field in metadata and field not in ['current_field', 'input_message']:
+                    value = metadata.get(field, "Not set")
+                    preview_text += f"{display_name}: {value}\n"
+            
+            preview_message = await callback_query.message.reply_text(preview_text)
+            await asyncio.sleep(10)
+            await preview_message.delete()
+            
+        except Exception as e:
+            await callback_query.answer(f"Error showing preview: {str(e)}", show_alert=True)
 
     @staticmethod
     async def notify_link_required(callback_query: CallbackQuery):
