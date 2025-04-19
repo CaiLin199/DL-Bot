@@ -1,0 +1,35 @@
+plugins/
+├── __init__.py
+│   └── Purpose: Initializes web server and routes using aiohttp
+│       Functions: web_server() - Creates and configures web application
+│
+├── aria2_client.py
+│   └── Purpose: Sets up aria2 RPC client for downloads
+│       Functions: Configures aria2 client with host, port, and secret
+│
+├── dl_progressbar.py
+│   └── Purpose: Handles download progress visualization
+│       Functions: DownloadProgressBar class for showing download progress
+│
+├── individual_downloader.py
+│   └── Purpose: Handles individual file downloads
+│       Functions: download_and_upload() - Downloads and uploads files
+│                 ddl_command() - Handles /ddl command
+│
+├── link_generator.py
+│   └── Purpose: Generates and processes download links
+│       Functions: process_message() - Processes messages to generate links
+│                 edit_metadata() - Edits post metadata
+│                 generate_callback() - Generates callback data
+│
+├── post_metadata.py
+│   └── Purpose: Manages metadata for posts
+│       Functions: Handles metadata creation and editing for posts
+│
+├── route.py
+│   └── Purpose: Defines web routes for the application
+│       Functions: Contains route definitions for web server
+│
+└── up_progressbar.py
+    └── Purpose: Handles upload progress visualization
+        Functions: UploadProgressBar class for showing upload progress
