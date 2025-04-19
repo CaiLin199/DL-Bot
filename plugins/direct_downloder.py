@@ -9,7 +9,6 @@ from .aria2_client import aria2
 from .progress_utils import create_progress_bar, calculate_eta
 from .link_generator import generate_link
 from .channel_poster import send_to_main_channel
-from .post_formatter import create_final_post
 from .file_handler import send_with_thumbnail, copy_file_to_channel
 
 CANCEL_DOWNLOAD = {}
@@ -54,11 +53,7 @@ async def direct_downloader(client: Client, message: Message):
     last_download_update = 0
 
     try:
-        # Get metadata from replied message
-        metadata = None
-        if message.reply_to_message and message.reply_to_message.text:
-            metadata = message.reply_to_message.text
-
+        # Download started message
         status_message = await message.reply(
             "📥 Download started...\n",
             reply_markup=InlineKeyboardMarkup([
@@ -107,7 +102,7 @@ async def direct_downloader(client: Client, message: Message):
                     completed = max(0, download.completed_length)
                     total = max(1, download.total_length)
                     progress_bar, current_mb, total_mb, speed_mb = create_progress_bar(completed, total)
-                    eta = calculate_eta(completed, total, speed_mb)
+                    eta = calculate_eta(completed, total, download.download_speed)
 
                     await status_message.edit(
                         f"📥 Downloading:\n{progress_bar}\n"
@@ -130,38 +125,28 @@ async def direct_downloader(client: Client, message: Message):
                 client=client,
                 file_path=file_path,
                 chat_id=message.chat.id,
-                reply_to_message_id=message.id,
-                caption=metadata
+                reply_to_message_id=message.id
             )
 
             if not pm_message:
                 await status_message.edit("❌ Failed to upload with thumbnail!")
                 return None
 
-            # Step 2: Copy to CHANNEL_ID and generate link
-            copy_result = await copy_file_to_channel(client, pm_message, CHANNEL_ID)
+            # Step 2: Copy to CHANNEL_ID
+            link_data = await copy_file_to_channel(client, pm_message, CHANNEL_ID)
             
-            if not copy_result.get("success"):
-                await status_message.edit(f"❌ Failed to copy to channel: {copy_result.get('error')}")
+            if not link_data.get("success"):
+                await status_message.edit(f"❌ Failed to copy to channel: {link_data.get('error')}")
                 return None
 
-            # Step 3: Create final post
-            post_result = await create_final_post(
-                client=client,
-                metadata=metadata,
-                generated_link=copy_result["text"],
-                status_message=status_message
-            )
-
-            if post_result:
-                await status_message.edit("✅ Process completed successfully!")
-            else:
-                await status_message.edit("⚠️ Post creation failed!")
+            await status_message.edit("✅ File uploaded successfully!")
+            return pm_message
 
         except Exception as process_error:
             await status_message.edit(f"❌ Process failed: {str(process_error)}")
+            return None
         finally:
-            # Clean up downloaded file
+            # Clean up
             try:
                 if os.path.exists(file_path):
                     os.remove(file_path)
