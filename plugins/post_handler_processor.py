@@ -3,6 +3,7 @@ from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, 
 from pyrogram.enums import MessageEntityType
 from .individual_downloader import download_and_upload
 from .item_on_db import save_to_channel
+from .link_generator import generate_link
 import asyncio
 import logging
 
@@ -93,7 +94,6 @@ class PostProcessor:
         user_id = callback_query.from_user.id
         metadata = PostProcessor._user_metadata.get(user_id, {})
         status_message = None
-        result_message = None
         
         if not metadata.get('download_link'):
             await callback_query.answer("Download link is required!", show_alert=True)
@@ -102,33 +102,42 @@ class PostProcessor:
         try:
             status_message = await callback_query.message.reply_text("⏳ Starting download process...")
             
-            # Create a temporary message for download command
-            temp_message = await client.send_message(
-                chat_id=callback_query.message.chat.id,
-                text=f"/ddl {metadata['download_link']}"
+            # Create virtual message for downloader
+            virtual_message = Message(
+                client=client,
+                id=0,
+                chat=callback_query.message.chat,
+                from_user=callback_query.from_user,
+                text=metadata['download_link'],
+                date=0
             )
-            temp_message.command = ["ddl", metadata['download_link']]
-            await temp_message.delete()  # Delete immediately
+            virtual_message.command = ["ddl", metadata['download_link']]
             
             logger.info(f"Starting download for link: {metadata['download_link']}")
-            result_message = await download_and_upload(client, temp_message)
+            result_message = await download_and_upload(client, virtual_message)
             
             if hasattr(result_message, 'document') or hasattr(result_message, 'video'):
                 await status_message.edit_text("✅ File downloaded, sending to channel...")
                 
                 try:
-                    link_info = await save_to_channel(client, result_message)
-                    
-                    if link_info and 'text' in link_info and 'reply_markup' in link_info:
-                        await callback_query.message.reply_text(
-                            text=link_info["text"],
-                            reply_markup=link_info["reply_markup"],
-                            disable_web_page_preview=True
-                        )
-                        await status_message.edit_text("✅ Process completed successfully!")
+                    # Save to channel and get share link
+                    channel_message = await save_to_channel(client, result_message)
+                    if channel_message:
+                        link_info = await generate_link(client, channel_message)
+                        
+                        if link_info and 'text' in link_info and 'reply_markup' in link_info:
+                            await callback_query.message.reply_text(
+                                text=link_info["text"],
+                                reply_markup=link_info["reply_markup"],
+                                disable_web_page_preview=True
+                            )
+                            await status_message.edit_text("✅ Process completed successfully!")
+                        else:
+                            await status_message.edit_text("❌ Failed to generate share link")
+                            logger.error("Invalid link_info structure")
                     else:
-                        await status_message.edit_text("❌ Failed to generate share link")
-                        logger.error("Invalid link_info structure")
+                        await status_message.edit_text("❌ Failed to save to channel")
+                        logger.error("Channel message was None")
                 except Exception as e:
                     logger.error(f"Channel save error: {str(e)}")
                     await status_message.edit_text(f"❌ Failed to save to channel: {str(e)}")
