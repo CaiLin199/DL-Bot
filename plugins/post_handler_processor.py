@@ -86,7 +86,7 @@ class PostProcessor:
                 await PostProcessor._user_messages[user_id].reply_text(f"Error saving metadata: {str(e)}")
 
     @staticmethod
-async def start_download_process(client: Client, callback_query: CallbackQuery):
+    async def start_download_process(client: Client, callback_query: CallbackQuery):
     """Start the download and upload process"""
     user_id = callback_query.from_user.id
     metadata = PostProcessor._user_metadata.get(user_id, {})
