@@ -1,6 +1,6 @@
 from pyrogram import Client
 from pyrogram.types import Message
-from config import CHANNEL_ID
+from config import CHANNEL_ID, BOT_USERNAME
 from .link_generator import generate_link
 import logging
 
