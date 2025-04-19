@@ -10,7 +10,7 @@ METADATA_FIELDS = {
     'genres': '🏷 Genres',
     'description': '📋 Description',
     'cover': '🖼 Cover Image',
-    'download_link': '⬇️ Download Link',  # This is the key that matters
+    'download_link': '⬇️ Download Link',  # This is the key name we'll use consistently
     'rating': '⭐ Rating'
 }
 
@@ -21,13 +21,12 @@ class PostHandlerButtons:
         keyboard = []
         metadata = PostProcessor.get_user_metadata(user_id)
         
-        # Create buttons for each metadata field
         for field_id, field_name in METADATA_FIELDS.items():
             status = "✅" if metadata.get(field_id) else "❌"
             keyboard.append([
                 InlineKeyboardButton(
                     f"{field_name} {status}",
-                    callback_data=f"metadata_{field_id}"  # This will now use 'download_link' instead of 'download'
+                    callback_data=f"metadata_{field_id}"  # Using consistent field_id
                 )
             ])
         
@@ -35,7 +34,7 @@ class PostHandlerButtons:
             InlineKeyboardButton("👁 Preview Post", callback_data="preview_post")
         ])
         
-        if metadata.get('download_link'):  # Make sure to use 'download_link' here too
+        if metadata.get('download_link'):  # Using download_link consistently
             keyboard.append([
                 InlineKeyboardButton("🚀 START", callback_data="start_process")
             ])
@@ -57,7 +56,7 @@ class PostHandlerButtons:
             keyboard.append([
                 InlineKeyboardButton(
                     f"{field_name} ❌",
-                    callback_data=f"metadata_{field_id}"  # This will now use 'download_link' instead of 'download'
+                    callback_data=f"metadata_{field_id}"  # Using consistent field_id
                 )
             ])
         
@@ -86,7 +85,7 @@ async def post_command(client: Client, message: Message):
 async def callback_handler(client: Client, callback_query: CallbackQuery):
     """Handle callback queries"""
     if callback_query.data.startswith('metadata_'):
-        field = callback_query.data.split('_')[1]
+        field = callback_query.data.split('_', 1)[1]  # Split only once
         await PostProcessor.handle_metadata_input(client, callback_query, METADATA_FIELDS)
     elif callback_query.data == 'preview_post':
         await PostProcessor.preview_post(callback_query, METADATA_FIELDS)
