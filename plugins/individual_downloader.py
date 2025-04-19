@@ -20,7 +20,7 @@ async def download_and_upload(client: Client, message: Message):
     
     try:
         # Start download using aria2
-        download = aria2.add_uri([download_url])
+        download = aria2.add_uris([download_url])  # Changed from add_uri to add_uris
         
         # Initialize progress handlers
         dl_progress = DownloadProgressBar(status_msg)
@@ -48,7 +48,7 @@ async def download_and_upload(client: Client, message: Message):
                 chat_id=message.chat.id,
                 document=file_path,
                 progress=up_progress.update,
-                caption=""
+                caption=f"📁 File: {os.path.basename(file_path)}\n📊 Size: {format_size(os.path.getsize(file_path))}"
             )
             await status_msg.delete()
         except Exception as e:
@@ -61,7 +61,7 @@ async def download_and_upload(client: Client, message: Message):
         await status_msg.edit_text(f"❌ Error: {str(e)}")
 
 # Register command handler
-@Bot.on_message(filters.command("ddl"))
+@Client.on_message(filters.command("ddl"))
 async def ddl_command(client: Client, message: Message):
     await download_and_upload(client, message)
 
