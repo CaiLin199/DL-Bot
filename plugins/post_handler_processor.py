@@ -5,6 +5,7 @@ from .item_on_db import save_to_channel
 import asyncio
 import logging
 
+# Configure logging
 logger = logging.getLogger(__name__)
 
 class PostProcessor:
@@ -56,6 +57,7 @@ class PostProcessor:
             PostProcessor._user_metadata[user_id]['input_message'] = input_msg
             
         except Exception as e:
+            logger.error(f"Error handling metadata input: {str(e)}")
             await callback_query.answer(f"Error: {str(e)}", show_alert=True)
 
     @staticmethod
@@ -86,6 +88,7 @@ class PostProcessor:
             if user_id in PostProcessor._user_messages:
                 await update_buttons_callback(PostProcessor._user_messages[user_id], user_id)
         except Exception as e:
+            logger.error(f"Error saving metadata: {str(e)}")
             if user_id in PostProcessor._user_messages:
                 await PostProcessor._user_messages[user_id].reply_text(f"Error saving metadata: {str(e)}")
 
@@ -106,39 +109,52 @@ class PostProcessor:
             # Create status message
             status_message = await callback_query.message.reply_text("⏳ Starting download process...")
             
-            # Prepare download message
-            download_message = await callback_query.message.reply_text("🔄 Processing...")
+            # Prepare download message with command
+            download_message = Message(
+                message_id=0,
+                chat=callback_query.message.chat,
+                text=metadata['download_link'],
+                client=client
+            )
             download_message.command = ['ddl', metadata['download_link']]
             
             # Start the download process
+            logger.info(f"Starting download for link: {metadata['download_link']}")
             result_message = await download_and_upload(client, download_message)
             
-            if result_message and result_message.document:
+            # Check for actual file in the message
+            if hasattr(result_message, 'document') or hasattr(result_message, 'video'):
                 await status_message.edit_text("✅ File downloaded, sending to channel...")
                 
-                # Save to channel and get share link
-                link_info = await save_to_channel(client, result_message)
-                
-                if link_info and link_info["success"]:
-                    # Send message with link and share button
-                    await callback_query.message.reply_text(
-                        text=link_info["text"],
-                        reply_markup=link_info["reply_markup"],
-                        disable_web_page_preview=True
-                    )
-                    await status_message.edit_text("✅ Process completed successfully!")
-                else:
-                    await status_message.edit_text("❌ Failed to generate share link")
+                try:
+                    # Save to channel and get share link
+                    link_info = await save_to_channel(client, result_message)
+                    
+                    if link_info and 'text' in link_info and 'reply_markup' in link_info:
+                        # Send message with link and share button
+                        await callback_query.message.reply_text(
+                            text=link_info["text"],
+                            reply_markup=link_info["reply_markup"],
+                            disable_web_page_preview=True
+                        )
+                        await status_message.edit_text("✅ Process completed successfully!")
+                    else:
+                        await status_message.edit_text("❌ Failed to generate share link")
+                        logger.error("Invalid link_info structure")
+                except Exception as e:
+                    logger.error(f"Channel save error: {str(e)}")
+                    await status_message.edit_text(f"❌ Failed to save to channel: {str(e)}")
             else:
-                await status_message.edit_text("❌ Failed to download file")
-        
+                await status_message.edit_text("❌ No valid file found in download result")
+                logger.error("Download result did not contain a document or video")
+    
         except Exception as e:
-            error_msg = await callback_query.message.reply_text(f"Error: {str(e)}")
-            await asyncio.sleep(10)
-            await error_msg.delete()
-            
+            logger.error(f"Download process error: {str(e)}")
+            if status_message:
+                await status_message.edit_text(f"❌ Error: {str(e)}")
+    
         finally:
-            # Cleanup
+            # Cleanup metadata and messages
             try:
                 if user_id in PostProcessor._user_metadata:
                     del PostProcessor._user_metadata[user_id]
@@ -151,8 +167,7 @@ class PostProcessor:
                 
                 if download_message:
                     await download_message.delete()
-                if result_message:
-                    await result_message.delete()
+                
             except Exception as e:
                 logger.error(f"Cleanup error: {str(e)}")
 
@@ -178,6 +193,7 @@ class PostProcessor:
             await preview_message.delete()
             
         except Exception as e:
+            logger.error(f"Preview error: {str(e)}")
             await callback_query.answer(f"Error showing preview: {str(e)}", show_alert=True)
 
     @staticmethod
