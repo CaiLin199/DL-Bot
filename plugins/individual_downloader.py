@@ -8,59 +8,76 @@ from .up_progressbar import UploadProgressBar
 from .aria2_client import aria2
 
 async def download_and_upload(client: Client, message: Message):
-    # Get the direct download link from message
-    if len(message.command) < 2:        
+    if len(message.command) < 2:
+        await message.reply_text("Please provide a direct download link!\nUsage: /ddl <direct_link>")
         return
     
     download_url = message.command[1]
-    
-    # Send initial status message
     status_msg = await message.reply_text("⏳ Starting download...")
     
     try:
         # Start download using aria2
-        download = aria2.add_uris([download_url])  # Changed from add_uri to add_uris
+        download = aria2.add_uris([download_url])
+        gid = download.gid
         
         # Initialize progress handlers
         dl_progress = DownloadProgressBar(status_msg)
         up_progress = UploadProgressBar(status_msg)
         
         # Monitor download progress
-        while not download.is_complete:
-            await dl_progress.update(
-                download.completed_length,
-                download.total_length,
-                download.download_speed
-            )
-            if download.has_failed:
-                await status_msg.edit_text(f"❌ Download failed: {download.error_message}")
-                return
-            await asyncio.sleep(2)
-        
-        # Download completed
-        file_path = download.files[0].path
-        await status_msg.edit_text("✅ Download completed! Starting upload...")
-        
-        # Upload file to user
-        try:
-            await client.send_document(
-                chat_id=message.chat.id,
-                document=file_path,
-                progress=up_progress.update,
-                caption=f"📁 File: {os.path.basename(file_path)}\n📊 Size: {format_size(os.path.getsize(file_path))}"
-            )
-            await status_msg.delete()
-        except Exception as e:
-            await status_msg.edit_text(f"❌ Upload failed: {str(e)}")
-        
-        # Cleanup
-        os.remove(file_path)
+        while True:
+            try:
+                # Get fresh download info
+                download = aria2.get_download(gid)
+                download.update()  # Force update download status
+                
+                # Check download status
+                if download.is_complete:
+                    file_path = download.files[0].path
+                    await status_msg.edit_text("✅ Download completed! Starting upload...")
+                    
+                    try:
+                        await client.send_document(
+                            chat_id=message.chat.id,
+                            document=file_path,
+                            progress=up_progress.update,
+                            caption=f"📁 File: {os.path.basename(file_path)}\n📊 Size: {format_size(os.path.getsize(file_path))}"
+                        )
+                        await status_msg.delete()
+                    except Exception as e:
+                        await status_msg.edit_text(f"❌ Upload failed: {str(e)}")
+                    
+                    # Cleanup
+                    try:
+                        os.remove(file_path)
+                    except:
+                        pass
+                    break
+                    
+                elif download.has_failed:
+                    error_msg = download.error_message if download.error_message else "Unknown error"
+                    await status_msg.edit_text(f"❌ Download failed: {error_msg}")
+                    break
+                    
+                else:
+                    # Update progress only if we have valid data
+                    completed = download.completed_length
+                    total = download.total_length
+                    speed = download.download_speed
+                    
+                    if total > 0 and completed >= 0 and speed >= 0:
+                        await dl_progress.update(completed, total, speed)
+                
+            except Exception as e:
+                continue  # Skip this update if there's an error
+                
+            await asyncio.sleep(1)  # Reduced sleep time for more frequent updates
         
     except Exception as e:
         await status_msg.edit_text(f"❌ Error: {str(e)}")
 
 # Register command handler
-@Bot.on_message(filters.command("ddl"))
+@Client.on_message(filters.command("ddl"))
 async def ddl_command(client: Client, message: Message):
     await download_and_upload(client, message)
 
