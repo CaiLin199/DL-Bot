@@ -97,7 +97,7 @@ async def callback_handler(client: Client, callback_query: CallbackQuery):
         await PostProcessor.notify_link_required(callback_query)
 
 # Message handler for metadata input
-@Bot.on_message(filters.private & filters.text & ~filters.command)
+@Bot.on_message(filters.private & filters.text & filters.create(lambda _, __, m: not m.text.startswith("/"))
 async def handle_metadata_message(client: Client, message: Message):
     """Handle metadata input messages"""
     await PostProcessor.save_metadata(client, message, PostHandlerButtons.update_metadata_buttons)
