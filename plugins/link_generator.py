@@ -2,6 +2,9 @@ from pyrogram import Client
 from config import BOT_USERNAME
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 import base64
+import logging
+
+logger = logging.getLogger(__name__)
 
 async def encode(string):
     """Encode a string to base64"""
@@ -11,7 +14,7 @@ async def encode(string):
         base64_string = base64_bytes.decode('ascii')
         return base64_string
     except Exception as e:
-        print(f"Encoding error: {str(e)}")
+        logger.error(f"Encoding error: {str(e)}")
         return None
 
 async def generate_link(client: Client, channel_message: Message, channel_id: int) -> dict:
@@ -36,7 +39,7 @@ async def generate_link(client: Client, channel_message: Message, channel_id: in
                     "reply_markup": reply_markup
                 }
     except Exception as e:
-        print(f"Link generation error: {str(e)}")
+        logger.error(f"Link generation error: {str(e)}")
     
     return {
         "success": False,
