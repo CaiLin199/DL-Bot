@@ -114,6 +114,8 @@ class PostProcessor:
             result_message = await download_and_upload(client, download_message)
             
             if result_message and result_message.document:
+                await status_message.edit_text("✅ File downloaded, sending to channel...")
+                
                 # Save to channel and get share link
                 link_info = await save_to_channel(client, result_message)
                 
@@ -121,8 +123,14 @@ class PostProcessor:
                     # Send message with link and share button
                     await callback_query.message.reply_text(
                         text=link_info["text"],
-                        reply_markup=link_info["reply_markup"]
+                        reply_markup=link_info["reply_markup"],
+                        disable_web_page_preview=True
                     )
+                    await status_message.edit_text("✅ Process completed successfully!")
+                else:
+                    await status_message.edit_text("❌ Failed to generate share link")
+            else:
+                await status_message.edit_text("❌ Failed to download file")
         
         except Exception as e:
             error_msg = await callback_query.message.reply_text(f"Error: {str(e)}")
@@ -138,8 +146,9 @@ class PostProcessor:
                     await PostProcessor._user_messages[user_id].delete()
                     del PostProcessor._user_messages[user_id]
                 
-                if status_message:
-                    await status_message.delete()
+                # Wait a few seconds before cleaning up messages
+                await asyncio.sleep(3)
+                
                 if download_message:
                     await download_message.delete()
                 if result_message:
