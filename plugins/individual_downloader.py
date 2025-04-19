@@ -8,8 +8,7 @@ from .up_progressbar import UploadProgressBar
 from .aria2_client import aria2
 
 async def download_and_upload(client: Client, message: Message):
-    if len(message.command) < 2:
-        await message.reply_text("Please provide a direct download link!\nUsage: /ddl <direct_link>")
+    if len(message.command) < 2:       
         return
     
     download_url = message.command[1]
