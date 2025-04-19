@@ -7,8 +7,6 @@ from config import OWNER_ID, CHANNEL_ID, MAIN_CHANNEL
 from bot import Bot
 from .aria2_client import aria2
 from .progress_utils import create_progress_bar, calculate_eta
-from .link_generator import generate_link
-from .channel_poster import send_to_main_channel
 from .file_handler import send_with_thumbnail, copy_file_to_channel
 
 CANCEL_DOWNLOAD = {}
@@ -50,7 +48,6 @@ async def direct_downloader(client: Client, message: Message):
 
     direct_link = message.command[1]
     CANCEL_DOWNLOAD[message.chat.id] = False
-    last_download_update = 0
 
     try:
         # Download started message
@@ -61,12 +58,16 @@ async def direct_downloader(client: Client, message: Message):
             ])
         )
 
+        # Modified aria2 options to fix range header issues
         try:
             download = aria2.add_uris([direct_link], {
                 'continue': 'true',
-                'max-connection-per-server': '16',
-                'split': '16',
-                'min-split-size': '1M'
+                'max-connection-per-server': '1',  # Reduced connections
+                'split': '1',  # Disabled splitting
+                'min-split-size': '20M',  # Increased min split size
+                'check-integrity': 'true',
+                'retry-wait': '3',
+                'max-tries': '5'
             })
             gid = download.gid
         except Exception as aria_error:
@@ -90,36 +91,49 @@ async def direct_downloader(client: Client, message: Message):
                 file_path = download.files[0].path
                 break
             elif download.has_failed:
-                await status_message.edit(f"❌ Download failed.\nError: {download.error_message}")
-                return None
+                # If download fails, try with different options
+                try:
+                    aria2.remove([gid])
+                    download = aria2.add_uris([direct_link], {
+                        'continue': 'true',
+                        'max-connection-per-server': '1',
+                        'split': '1',
+                        'min-split-size': '20M',
+                        'check-integrity': 'false',
+                        'retry-wait': '3',
+                        'max-tries': '5',
+                        'stream-piece-selector': 'inorder'
+                    })
+                    gid = download.gid
+                    continue
+                except Exception:
+                    await status_message.edit(f"❌ Download failed.\nError: {download.error_message}")
+                    return None
             elif download.is_removed:
                 await status_message.edit("❌ Download canceled.")
                 return None
 
-            current_time = time.time()
-            if current_time - last_download_update >= PROGRESS_UPDATE_DELAY:
-                try:
-                    completed = max(0, download.completed_length)
-                    total = max(1, download.total_length)
-                    progress_bar, current_mb, total_mb, speed_mb = create_progress_bar(completed, total)
-                    eta = calculate_eta(completed, total, download.download_speed)
+            try:
+                completed = download.completed_length
+                total = download.total_length or 1
+                progress_bar, current_mb, total_mb, speed_mb = create_progress_bar(completed, total)
+                eta = calculate_eta(completed, total, download.download_speed)
 
-                    await status_message.edit(
-                        f"📥 Downloading:\n{progress_bar}\n"
-                        f"Size: {current_mb}/{total_mb} MB\n"
-                        f"Speed: {speed_mb} MB/s | ETA: {eta}",
-                        reply_markup=InlineKeyboardMarkup([
-                            [InlineKeyboardButton("❌ Cancel", callback_data="cancel")]
-                        ])
-                    )
-                    last_download_update = current_time
-                except Exception as e:
-                    print(f"Progress update error: {str(e)}")
+                await status_message.edit(
+                    f"📥 Downloading:\n{progress_bar}\n"
+                    f"Size: {current_mb}/{total_mb} MB\n"
+                    f"Speed: {speed_mb} MB/s | ETA: {eta}",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("❌ Cancel", callback_data="cancel")]
+                    ])
+                )
+            except Exception as e:
+                print(f"Progress update error: {str(e)}")
 
             await asyncio.sleep(PROGRESS_UPDATE_DELAY)
 
         try:
-            # Step 1: Upload to bot PM with thumbnail
+            # Step 1: Send to bot PM with thumbnail
             await status_message.edit("📤 Uploading with thumbnail...")
             pm_message = await send_with_thumbnail(
                 client=client,
@@ -133,10 +147,10 @@ async def direct_downloader(client: Client, message: Message):
                 return None
 
             # Step 2: Copy to CHANNEL_ID
-            link_data = await copy_file_to_channel(client, pm_message, CHANNEL_ID)
+            copy_result = await copy_file_to_channel(client, pm_message, CHANNEL_ID)
             
-            if not link_data.get("success"):
-                await status_message.edit(f"❌ Failed to copy to channel: {link_data.get('error')}")
+            if not copy_result.get("success"):
+                await status_message.edit(f"❌ Failed to copy to channel: {copy_result.get('error')}")
                 return None
 
             await status_message.edit("✅ File uploaded successfully!")
