@@ -1,19 +1,10 @@
 from pyrogram import Client, filters
 from pyrogram.types import Message
 import os
+import asyncio
 from .dl_progressbar import DownloadProgressBar
 from .up_progressbar import UploadProgressBar
-from aria2p import API, Client as Aria2Client
-from config import ARIA2_SECRET, ARIA2_HOST, ARIA2_PORT
-
-# Connect to aria2 RPC server
-aria2 = API(
-    Aria2Client(
-        host=ARIA2_HOST,
-        port=ARIA2_PORT,
-        secret=ARIA2_SECRET
-    )
-)
+from .aria2_client import aria2
 
 async def download_and_upload(client: Client, message: Message):
     # Get the direct download link from message
