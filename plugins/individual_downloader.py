@@ -41,7 +41,7 @@ async def download_and_upload(client: Client, message: Message):
                             chat_id=message.chat.id,
                             document=file_path,
                             progress=up_progress.update,
-                            caption=f"📁 File: {os.path.basename(file_path)}\n📊 Size: {format_size(os.path.getsize(file_path))}"
+                            caption=""
                         )
                         await status_msg.delete()
                     except Exception as e:
