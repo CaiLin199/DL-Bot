@@ -9,7 +9,7 @@ class DownloadProgressBar:
     async def update(self, current, total, speed):
         now = time.time()
         
-        # Update progress every 2 seconds to avoid flood
+        # Update progress every 3 seconds to avoid flood
         if now - self.last_update_time < 3:
             return
         
