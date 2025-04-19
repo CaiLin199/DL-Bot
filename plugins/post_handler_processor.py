@@ -86,31 +86,52 @@ class PostProcessor:
                 await PostProcessor._user_messages[user_id].reply_text(f"Error saving metadata: {str(e)}")
 
     @staticmethod
-    async def start_download_process(client: Client, callback_query: CallbackQuery):
-        """Start the download and upload process"""
-        user_id = callback_query.from_user.id
-        metadata = PostProcessor._user_metadata.get(user_id, {})
+async def start_download_process(client: Client, callback_query: CallbackQuery):
+    """Start the download and upload process"""
+    user_id = callback_query.from_user.id
+    metadata = PostProcessor._user_metadata.get(user_id, {})
+    
+    if not metadata.get('download_link'):
+        await callback_query.answer("Download link is required!", show_alert=True)
+        return
+    
+    try:
+        # Create status message
+        status_message = await callback_query.message.reply_text("⏳ Starting download process...")
         
-        if not metadata.get('download_link'):
-            await callback_query.answer("Download link is required!", show_alert=True)
-            return
+        # Prepare download message
+        download_message = await callback_query.message.reply_text("🔄 Processing...")
+        download_message.command = ['ddl', metadata['download_link']]
         
-        try:
-            # Create status message
-            status_message = await callback_query.message.reply_text("Starting download process...")
+        # Start the download process
+        result_message = await download_and_upload(client, download_message)
+        
+        if result_message and result_message.document:
+            # Save to channel and get share link
+            link_info = await save_to_channel(client, result_message)
             
-            # Prepare download message for download_and_upload function
-            download_message = await callback_query.message.reply_text("Processing...")
-            download_message.command = ['ddl', metadata['download_link']]
-            
-            # Start the download process
-            await download_and_upload(client, download_message)
-            
-            # Store metadata for future use (you can implement storage later)
-            stored_metadata = {
-                key: value for key, value in metadata.items() 
-                if key not in ['current_field', 'input_message']
-            }
+            if link_info and link_info["success"]:
+                # Send message with link and share button
+                await callback_query.message.reply_text(
+                    text=link_info["text"],
+                    reply_markup=link_info["reply_markup"]
+                )
+        
+        # Cleanup
+        if user_id in PostProcessor._user_metadata:
+            del PostProcessor._user_metadata[user_id]
+        if user_id in PostProcessor._user_messages:
+            await PostProcessor._user_messages[user_id].delete()
+            del PostProcessor._user_messages[user_id]
+        
+        await status_message.delete()
+        if result_message:
+            await result_message.delete()
+        
+    except Exception as e:
+        error_msg = await callback_query.message.reply_text(f"Error: {str(e)}")
+        await asyncio.sleep(10)
+        await error_msg.delete()
             
             # Cleanup
             if user_id in PostProcessor._user_metadata:
