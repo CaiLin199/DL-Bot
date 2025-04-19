@@ -61,7 +61,7 @@ async def download_and_upload(client: Client, message: Message):
         await status_msg.edit_text(f"❌ Error: {str(e)}")
 
 # Register command handler
-@Client.on_message(filters.command("ddl"))
+@Bot.on_message(filters.command("ddl"))
 async def ddl_command(client: Client, message: Message):
     await download_and_upload(client, message)
 
