@@ -2,7 +2,7 @@ from pyrogram import Client
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, Chat
 from pyrogram.enums import MessageEntityType
 from .individual_downloader import download_and_upload
-from .item_on_db import save_to_channel
+from config import CHANNEL_ID
 from .link_generator import generate_link
 import asyncio
 import logging
@@ -114,15 +114,17 @@ class PostProcessor:
             virtual_message.command = ["ddl", metadata['download_link']]
             
             logger.info(f"Starting download for link: {metadata['download_link']}")
-            result_message = await download_and_upload(client, virtual_message)
+            result_message = await download_and_upload(client, virtual_message, status_message)
             
             if hasattr(result_message, 'document') or hasattr(result_message, 'video'):
                 await status_message.edit_text("✅ File downloaded, sending to channel...")
                 
                 try:
-                    # Save to channel and get share link
-                    channel_message = await save_to_channel(client, result_message)
+                    # First send copy to channel
+                    channel_message = await result_message.copy(CHANNEL_ID)
+                    
                     if channel_message:
+                        # Then generate shareable link
                         link_info = await generate_link(client, channel_message)
                         
                         if link_info and 'text' in link_info and 'reply_markup' in link_info:
@@ -136,20 +138,20 @@ class PostProcessor:
                             await status_message.edit_text("❌ Failed to generate share link")
                             logger.error("Invalid link_info structure")
                     else:
-                        await status_message.edit_text("❌ Failed to save to channel")
-                        logger.error("Channel message was None")
+                        await status_message.edit_text("❌ Failed to send copy to channel")
+                        logger.error("Channel copy failed")
                 except Exception as e:
                     logger.error(f"Channel save error: {str(e)}")
                     await status_message.edit_text(f"❌ Failed to save to channel: {str(e)}")
             else:
                 await status_message.edit_text("❌ No valid file found in download result")
                 logger.error("Download result did not contain a document or video")
-    
+
         except Exception as e:
             logger.error(f"Download process error: {str(e)}")
             if status_message:
                 await status_message.edit_text(f"❌ Error: {str(e)}")
-    
+
         finally:
             try:
                 if user_id in PostProcessor._user_metadata:
