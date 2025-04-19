@@ -114,7 +114,7 @@ class PostProcessor:
             virtual_message.command = ["ddl", metadata['download_link']]
             
             logger.info(f"Starting download for link: {metadata['download_link']}")
-            result_message = await download_and_upload(client, virtual_message, status_message)
+            result_message = await download_and_upload(client, virtual_message)
             
             if hasattr(result_message, 'document') or hasattr(result_message, 'video'):
                 await status_message.edit_text("✅ File downloaded, sending to channel...")
